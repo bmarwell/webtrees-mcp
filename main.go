@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -21,6 +25,7 @@ func main() {
 	dsn := flag.String("dsn", "", "MariaDB connection string")
 	prefix := flag.String("prefix", "wt", "Webtrees table prefix")
 	httpEnabled := flag.Bool("http", false, "also listen for MCP requests over HTTP")
+	httpDebug := flag.Bool("http-debug", false, "log HTTP request and response headers and bodies to stdout")
 	httpHost := flag.String("http-host", "127.0.0.1", "HTTP bind address when -http is enabled")
 	httpPort := flag.Int("http-port", 8080, "HTTP port when -http is enabled")
 	flag.Parse()
@@ -57,7 +62,7 @@ func main() {
 		mux := http.NewServeMux()
 		mux.Handle("/mcp", accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			httpServer.ServeHTTP(w, r)
-		})))
+		}), *httpDebug))
 		transportServer := &http.Server{Addr: address, Handler: mux}
 		httpServer = server.NewStreamableHTTPServer(s,
 			server.WithStateLess(true),
@@ -78,6 +83,7 @@ type accessLogResponseWriter struct {
 	http.ResponseWriter
 	status int
 	bytes  int
+	body   []byte
 }
 
 func (w *accessLogResponseWriter) WriteHeader(status int) {
@@ -98,6 +104,7 @@ func (w *accessLogResponseWriter) Write(data []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(data)
 	w.bytes += n
+	w.body = append(w.body, data[:n]...)
 	return n, err
 }
 
@@ -110,10 +117,23 @@ func (w *accessLogResponseWriter) Flush() {
 	}
 }
 
-func accessLog(next http.Handler) http.Handler {
+func accessLog(next http.Handler, debug bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		log.Printf("HTTP request method=%s path=%s remote=%s", r.Method, r.URL.RequestURI(), r.RemoteAddr)
+		var requestBody []byte
+		if debug && r.Body != nil {
+			var err error
+			requestBody, err = io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			if err != nil {
+				log.Printf("HTTP request body read error: %v", err)
+			}
+			r.Body = io.NopCloser(bytes.NewReader(requestBody))
+		}
+		if debug {
+			log.Printf("HTTP request headers=%s body=%q", formatHeaders(r.Header), requestBody)
+		}
 
 		response := &accessLogResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(response, r)
@@ -121,5 +141,28 @@ func accessLog(next http.Handler) http.Handler {
 			response.status = http.StatusOK
 		}
 		log.Printf("HTTP response method=%s path=%s status=%d bytes=%d duration=%s", r.Method, r.URL.RequestURI(), response.status, response.bytes, time.Since(started))
+		if debug {
+			log.Printf("HTTP response headers=%s body=%q", formatHeaders(w.Header()), response.body)
+		}
 	})
+}
+
+func formatHeaders(headers http.Header) string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var builder strings.Builder
+	for i, key := range keys {
+		if i > 0 {
+			builder.WriteString(", ")
+		}
+		builder.WriteString(key)
+		builder.WriteString("=[")
+		builder.WriteString(strings.Join(headers[key], ", "))
+		builder.WriteByte(']')
+	}
+	return builder.String()
 }

@@ -70,6 +70,13 @@ go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http
 
 The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
 
+For troubleshooting, `-http-debug` logs request and response headers and bodies to standard output. This may include genealogy data or credentials, so enable it only temporarily in a trusted environment:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-debug
+----
+
 For Docker or Podman port publishing, bind to all container interfaces:
 
 [source,shell]
