@@ -61,7 +61,7 @@ go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -prefix wt
 
 The server reads MCP messages from standard input and writes protocol responses to standard output. Diagnostic errors are written to standard error.
 
-HTTP is disabled by default. Enable the streamable HTTP transport explicitly with `-http`; it binds to localhost on port `8080` by default and uses the `/mcp` endpoint:
+HTTP is disabled by default. Enable the streamable HTTP transport explicitly with `-http`; it binds to `127.0.0.1` on port `8080` by default and uses the `/mcp` endpoint:
 
 [source,shell]
 ----
@@ -69,6 +69,15 @@ go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http
 ----
 
 The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
+
+For Docker or Podman port publishing, bind to all container interfaces:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-host 0.0.0.0
+----
+
+`-http-host` also accepts a specific interface or IP address. Binding to `0.0.0.0` or a public address is not recommended without authentication, firewall rules, and transport security because the HTTP endpoint exposes genealogy data.
 
 Use `-http-port` to select another port:
 
