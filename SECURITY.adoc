@@ -1,0 +1,10 @@
+= Security and privacy
+
+This server reads personal genealogy data. Treat its database credentials and responses as sensitive.
+
+* Use a MariaDB account with `SELECT` permission only on the required webtrees tables.
+* Keep database credentials out of source control; pass the DSN through local configuration or a secret manager.
+* The optional HTTP transport has no authentication and binds to `127.0.0.1` by default. Do not expose it beyond a trusted network without adding authentication and transport protection.
+* Do not commit database dumps or exported GEDCOM data. Local dumps are ignored by this repository.
+
+The server is intended for trusted local use. Review deployment, access control, and privacy obligations before using it with real family data.

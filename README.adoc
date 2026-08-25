@@ -1,0 +1,146 @@
+= Webtrees MCP Server
+
+Webtrees MCP Server is a read-only https://modelcontextprotocol.io/[Model Context Protocol (MCP)] server written in Go. It connects to a MariaDB database used by https://www.webtrees.net/[webtrees] and lets MCP clients retrieve structured genealogy data.
+
+This is an early, AI-assisted project. The implementation has not been independently audited or tested against every webtrees release. Review the code and run it with least-privilege, read-only database credentials before using it with real family data. See `SECURITY.adoc` for deployment and privacy considerations.
+
+== License
+
+Copyright (c) 2026 Benjamin Marwell.
+
+This project is available under the https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12[European Union Public Licence (EUPL) v1.2]. See `LICENSE`.
+
+== Features
+
+* Runs over the MCP stdio transport for use by local agent clients.
+* Exposes `get_person`, `search_persons`, `get_family`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Parses names and birth dates from webtrees GEDCOM records.
+* Performs only parameterized `SELECT` queries; it has no write or migration operations.
+* Supports configurable webtrees table prefixes.
+
+== Database schema essentials
+
+The webtrees table prefix defaults to `wt`. The dump used during development confirms these are the core tables for genealogy queries:
+
+|===
+|Table |Required columns |Purpose
+
+|`wt_gedcom` |`gedcom_id`, `gedcom_name`, `title` |Tree catalog; `gedcom_id` is the numeric tree ID.
+|`wt_individuals` |`i_id`, `i_file`, `i_gedcom` |Individual xref, tree ID, and raw GEDCOM record.
+|`wt_families` |`f_id`, `f_file`, `f_husb`, `f_wife`, `f_gedcom` |Family xref, tree ID, spouses, and raw family GEDCOM record.
+|`wt_dates` |`d_gid`, `d_file`, `d_type`, `d_year`, `d_month`, `d_day` |Indexed event dates for efficient date-based queries.
+|`wt_link` |`l_file`, `l_from`, `l_type`, `l_to` |Generic GEDCOM relationship links.
+|`wt_name` |`n_file`, `n_id`, `n_full`, `n_surname`, `n_givn` |Normalized/searchable names.
+|`wt_sources` |`s_id`, `s_file`, `s_name`, `s_gedcom` |Source records and citations.
+|===
+
+`i_file` and `f_file` refer to `wt_gedcom.gedcom_id`. Individual and family details are stored primarily as GEDCOM text, while `wt_dates`, `wt_name`, and `wt_link` provide useful indexes for future tools. Queries must always constrain records by the tree ID because xrefs such as `I1` and `F1` are only unique within a tree.
+
+Useful future read-only tools include family/relative expansion from `wt_families`, ancestor and descendant traversal through `FAMC`/`FAMS` and `f_husb`/`f_wife`/`f_gedcom`, date-range searches via `wt_dates`, name searches via `wt_name`, and evidence lookup through `wt_sources`.
+
+== Requirements
+
+* Go 1.25 or newer (the MCP dependency currently requires Go 1.25.5).
+* A MariaDB/MySQL database containing a webtrees installation.
+
+== Running
+
+Build or run the server with a webtrees DSN:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees'
+----
+
+The table prefix defaults to `wt` and can be changed with `-prefix`:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -prefix wt
+----
+
+The server reads MCP messages from standard input and writes protocol responses to standard output. Diagnostic errors are written to standard error.
+
+HTTP is disabled by default. Enable the streamable HTTP transport explicitly with `-http`; it binds to localhost on port `8080` by default and uses the `/mcp` endpoint:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http
+----
+
+The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
+
+Use `-http-port` to select another port:
+
+[source,shell]
+----
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-port 9090
+----
+
+== MCP tools
+
+To enumerate the registered tools, call `tools/list` after `initialize` with an empty parameter object (or omit `params`):
+
+[source,json]
+----
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+----
+
+The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initialize`; they are not needed for `tools/list`. If a response contains `nextCursor`, send that exact opaque value in a later `tools/list` request. Do not send a placeholder such as `optional-cursor-value`: the server expects a framework-generated base64 cursor and will reject an invalid value.
+
+`get_person` accepts:
+
+[source,json]
+----
+{
+  "tree_id": "tree-id",
+  "person_id": "I1"
+}
+----
+
+`search_persons` accepts `tree_id` and `surname`, and returns matching person summaries. `get_family` accepts `tree_id` and `family_id`, returning parent and child links without embedding duplicate person objects.
+
+`list_tree_ids` takes no arguments. The born and deceased listing tools accept a `tree_id` and optional `limit` (default `10`). All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
+
+It returns JSON in this shape:
+
+[source,json]
+----
+{
+  "id": "I1",
+  "name": {
+    "given": "Ada",
+    "surname": "Lovelace"
+  },
+  "birth_date": "10 DEC 1815"
+}
+----
+
+== Project layout
+
+* `internal/db` contains the read-only database repository.
+* `internal/model` contains DTOs and the lightweight GEDCOM parser.
+* `internal/mcp` maps repository operations to MCP tools.
+* `test` contains sqlmock unit tests and an optional database schema test.
+
+== Testing
+
+Run unit and integration-test packages with:
+
+[source,shell]
+----
+go test ./...
+go vet ./...
+----
+
+The schema test is skipped unless `WEBTREES_DSN` is set:
+
+[source,shell]
+----
+WEBTREES_DSN='user:password@tcp(127.0.0.1:3306)/webtrees' go test ./test -run TestWebtreesSchema
+----

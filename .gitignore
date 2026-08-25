@@ -1,0 +1,47 @@
+# Go build and test artifacts
+/webtrees-mcp
+*.exe
+*.exe.manifest
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+/build/
+/coverage/
+coverage.out
+
+# Go workspace and local caches
+go.work
+go.work.sum
+.cache/
+
+# IDE and editor metadata (keep the project IDE agnostic)
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Generated data, logs, and temporary files
+/data/
+/generated/
+/tmp/
+/webtrees_dump.sql
+*.log
+*.pid
+*.swp
+*.swo
+*~
+.DS_Store

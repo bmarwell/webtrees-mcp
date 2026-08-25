@@ -1,0 +1,16 @@
+= Contributing
+
+Contributions are welcome. Please keep changes focused and preserve the project's read-only database boundary.
+
+Before opening a pull request, run:
+
+[source,shell]
+----
+gofmt -w main.go internal/db/*.go internal/mcp/*.go internal/model/*.go test/*.go
+go test ./...
+go vet ./...
+----
+
+Do not commit database dumps, credentials, genealogy exports, or IDE metadata. The repository's `.gitignore` includes common local and generated files, but contributors should still check staged changes before publishing.
+
+Changes that add a tool should include its input/output shape in `README.adoc` and unit coverage for its SQL and DTO mapping where practical.
