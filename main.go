@@ -40,7 +40,6 @@ func main() {
 	}
 	s := server.NewMCPServer("webtrees-mcp", "0.1.0")
 	webtreesmcp.RegisterTools(s, reader)
-	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if *httpEnabled {
 		address := net.JoinHostPort(*httpHost, fmt.Sprintf("%d", *httpPort))
 		// HTTP clients frequently do not preserve the Mcp-Session-Id header
@@ -51,12 +50,12 @@ func main() {
 			log.Printf("WARNING: HTTP transport is bound to %s; it has no authentication and may expose genealogy data", *httpHost)
 		}
 		log.Printf("starting webtrees-mcp HTTP transport on http://%s/mcp", address)
-		go func() {
-			if err := httpServer.Start(address); err != nil {
-				log.Printf("HTTP server error: %v", err)
-			}
-		}()
+		if err := httpServer.Start(address); err != nil {
+			log.Printf("HTTP server error: %v", err)
+		}
+		return
 	}
+	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if err := server.ServeStdio(s); err != nil {
 		log.Printf("server error: %v", err)
 	}
