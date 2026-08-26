@@ -78,7 +78,7 @@ object and never include the DSN or genealogy data. The process handles
 `SIGINT` and `SIGTERM` and allows in-flight HTTP requests up to ten seconds to
 finish before closing the database.
 
-For troubleshooting, `-http-debug` logs request and response headers and bodies to standard output. This may include genealogy data or credentials, so enable it only temporarily in a trusted environment:
+For troubleshooting, `-http-debug` logs request and response headers and bodies to standard output. Body logging is limited to 4096 bytes per message by default; use `-http-debug-body-limit` to change the limit (including `0` to disable body contents). Authorization, proxy-authorization, cookie, and set-cookie headers are redacted by default. Use `-http-debug-redact-headers` with a comma-separated list to customize the redactions; an empty value disables header redaction. These controls do not redact URLs or body contents, so enable debug logging only temporarily in a trusted environment:
 
 [source,shell]
 ----

@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/textproto"
 	"os"
 	"os/signal"
 	"sort"
@@ -33,8 +34,10 @@ func main() {
 }
 
 const (
-	databaseStartupTimeout = 5 * time.Second
-	httpShutdownTimeout    = 10 * time.Second
+	databaseStartupTimeout        = 5 * time.Second
+	httpShutdownTimeout           = 10 * time.Second
+	defaultHTTPDebugBodyLimit     = 4096
+	defaultHTTPDebugRedactHeaders = "Authorization,Cookie,Proxy-Authorization,Set-Cookie"
 )
 
 func run() error {
@@ -42,12 +45,18 @@ func run() error {
 	prefix := flag.String("prefix", "wt", "Webtrees table prefix")
 	httpEnabled := flag.Bool("http", false, "listen for MCP requests over HTTP")
 	httpDebug := flag.Bool("http-debug", false, "log HTTP request and response headers and bodies to stdout")
+	httpDebugBodyLimit := flag.Int("http-debug-body-limit", defaultHTTPDebugBodyLimit, "maximum number of request or response body bytes to log")
+	httpDebugRedactHeaders := flag.String("http-debug-redact-headers", defaultHTTPDebugRedactHeaders, "comma-separated HTTP headers to redact in debug logs; empty disables header redaction")
 	httpHost := flag.String("http-host", "127.0.0.1", "HTTP bind address when -http is enabled")
 	httpPort := flag.Int("http-port", 8080, "HTTP port when -http is enabled")
 	flag.Parse()
 	if *dsn == "" {
 		return fmt.Errorf("-dsn is required")
 	}
+	if *httpDebugBodyLimit < 0 {
+		return fmt.Errorf("-http-debug-body-limit must not be negative")
+	}
+	redactHeaders := parseRedactedHeaders(*httpDebugRedactHeaders)
 
 	database, err := sql.Open("mysql", *dsn)
 	if err != nil {
@@ -79,7 +88,7 @@ func run() error {
 			log.Printf("WARNING: HTTP transport is bound to %s; it has no authentication and may expose genealogy data", *httpHost)
 		}
 		log.Printf("starting webtrees-mcp HTTP transport on http://%s/mcp", address)
-		return serveHTTP(s, address, *httpDebug)
+		return serveHTTP(s, address, *httpDebug, *httpDebugBodyLimit, redactHeaders)
 	}
 	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if err := server.ServeStdio(s); err != nil {
@@ -88,16 +97,16 @@ func run() error {
 	return nil
 }
 
-func serveHTTP(mcpServer *server.MCPServer, address string, debug bool) error {
+func serveHTTP(mcpServer *server.MCPServer, address string, debug bool, bodyLimit int, redactHeaders map[string]struct{}) error {
 	var transport *server.StreamableHTTPServer
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		transport.ServeHTTP(w, r)
-	}), debug))
+	}), debug, bodyLimit, redactHeaders))
 	// The database has already passed the startup check before this handler is
 	// installed. The endpoints intentionally expose no connection details.
-	mux.Handle("/healthz", accessLog(statusHandler("ok", http.StatusOK), debug))
-	mux.Handle("/readyz", accessLog(statusHandler("ready", http.StatusOK), debug))
+	mux.Handle("/healthz", accessLog(statusHandler("ok", http.StatusOK), debug, bodyLimit, redactHeaders))
+	mux.Handle("/readyz", accessLog(statusHandler("ready", http.StatusOK), debug, bodyLimit, redactHeaders))
 	transportServer := &http.Server{Addr: address, Handler: mux}
 	transport = server.NewStreamableHTTPServer(mcpServer,
 		server.WithStateLess(true),
@@ -148,9 +157,11 @@ func statusHandler(status string, responseStatus int) http.Handler {
 
 type accessLogResponseWriter struct {
 	http.ResponseWriter
-	status int
-	bytes  int
-	body   []byte
+	status    int
+	bytes     int
+	body      []byte
+	truncated bool
+	bodyLimit int
 }
 
 func (w *accessLogResponseWriter) WriteHeader(status int) {
@@ -171,7 +182,17 @@ func (w *accessLogResponseWriter) Write(data []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(data)
 	w.bytes += n
-	w.body = append(w.body, data[:n]...)
+	if len(w.body) < w.bodyLimit {
+		remaining := w.bodyLimit - len(w.body)
+		if n > remaining {
+			w.body = append(w.body, data[:remaining]...)
+			w.truncated = true
+		} else {
+			w.body = append(w.body, data[:n]...)
+		}
+	} else if n > 0 {
+		w.truncated = true
+	}
 	return n, err
 }
 
@@ -184,37 +205,36 @@ func (w *accessLogResponseWriter) Flush() {
 	}
 }
 
-func accessLog(next http.Handler, debug bool) http.Handler {
+func accessLog(next http.Handler, debug bool, bodyLimit int, redactHeaders map[string]struct{}) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		log.Printf("HTTP request method=%s path=%s remote=%s", r.Method, r.URL.RequestURI(), r.RemoteAddr)
 		var requestBody []byte
+		requestTruncated := false
 		if debug && r.Body != nil {
 			var err error
-			requestBody, err = io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			requestBody, requestTruncated, r.Body, err = previewBody(r.Body, bodyLimit)
 			if err != nil {
 				log.Printf("HTTP request body read error: %v", err)
 			}
-			r.Body = io.NopCloser(bytes.NewReader(requestBody))
 		}
 		if debug {
-			log.Printf("HTTP request headers=%s body=%q", formatHeaders(r.Header), requestBody)
+			log.Printf("HTTP request headers=%s body=%s", formatHeaders(r.Header, redactHeaders), formatBody(requestBody, requestTruncated))
 		}
 
-		response := &accessLogResponseWriter{ResponseWriter: w}
+		response := &accessLogResponseWriter{ResponseWriter: w, bodyLimit: bodyLimit}
 		next.ServeHTTP(response, r)
 		if response.status == 0 {
 			response.status = http.StatusOK
 		}
 		log.Printf("HTTP response method=%s path=%s status=%d bytes=%d duration=%s", r.Method, r.URL.RequestURI(), response.status, response.bytes, time.Since(started))
 		if debug {
-			log.Printf("HTTP response headers=%s body=%q", formatHeaders(w.Header()), response.body)
+			log.Printf("HTTP response headers=%s body=%s", formatHeaders(w.Header(), redactHeaders), formatBody(response.body, response.truncated))
 		}
 	})
 }
 
-func formatHeaders(headers http.Header) string {
+func formatHeaders(headers http.Header, redact map[string]struct{}) string {
 	keys := make([]string, 0, len(headers))
 	for key := range headers {
 		keys = append(keys, key)
@@ -228,8 +248,48 @@ func formatHeaders(headers http.Header) string {
 		}
 		builder.WriteString(key)
 		builder.WriteString("=[")
-		builder.WriteString(strings.Join(headers[key], ", "))
+		if _, ok := redact[textproto.CanonicalMIMEHeaderKey(key)]; ok {
+			builder.WriteString("[REDACTED]")
+		} else {
+			builder.WriteString(strings.Join(headers[key], ", "))
+		}
 		builder.WriteByte(']')
 	}
 	return builder.String()
+}
+
+func parseRedactedHeaders(value string) map[string]struct{} {
+	redact := make(map[string]struct{})
+	for _, header := range strings.Split(value, ",") {
+		header = strings.TrimSpace(header)
+		if header != "" {
+			redact[textproto.CanonicalMIMEHeaderKey(header)] = struct{}{}
+		}
+	}
+	return redact
+}
+
+func previewBody(body io.ReadCloser, limit int) ([]byte, bool, io.ReadCloser, error) {
+	read, err := io.ReadAll(io.LimitReader(body, int64(limit)+1))
+	truncated := len(read) > limit
+	preview := read
+	if truncated {
+		preview = read[:limit]
+	}
+	restored := &restoredBody{Reader: io.MultiReader(bytes.NewReader(read), body), closer: body}
+	return preview, truncated, restored, err
+}
+
+type restoredBody struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (b *restoredBody) Close() error { return b.closer.Close() }
+
+func formatBody(body []byte, truncated bool) string {
+	if truncated {
+		return fmt.Sprintf("%q...[truncated]", body)
+	}
+	return fmt.Sprintf("%q", body)
 }
