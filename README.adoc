@@ -70,6 +70,14 @@ go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http
 
 The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
 
+At startup the server verifies database connectivity with a five-second
+timeout. If that check or the HTTP listener fails, the process exits non-zero
+and logs the reason. `GET /healthz` is a liveness check and
+`GET /readyz` is a readiness check; both return only a small status JSON
+object and never include the DSN or genealogy data. The process handles
+`SIGINT` and `SIGTERM` and allows in-flight HTTP requests up to ten seconds to
+finish before closing the database.
+
 For troubleshooting, `-http-debug` logs request and response headers and bodies to standard output. This may include genealogy data or credentials, so enable it only temporarily in a trusted environment:
 
 [source,shell]

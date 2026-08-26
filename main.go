@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,8 +12,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -22,29 +26,46 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("server stopped: %v", err)
+		os.Exit(1)
+	}
+}
+
+const (
+	databaseStartupTimeout = 5 * time.Second
+	httpShutdownTimeout    = 10 * time.Second
+)
+
+func run() error {
 	dsn := flag.String("dsn", "", "MariaDB connection string")
 	prefix := flag.String("prefix", "wt", "Webtrees table prefix")
-	httpEnabled := flag.Bool("http", false, "also listen for MCP requests over HTTP")
+	httpEnabled := flag.Bool("http", false, "listen for MCP requests over HTTP")
 	httpDebug := flag.Bool("http-debug", false, "log HTTP request and response headers and bodies to stdout")
 	httpHost := flag.String("http-host", "127.0.0.1", "HTTP bind address when -http is enabled")
 	httpPort := flag.Int("http-port", 8080, "HTTP port when -http is enabled")
 	flag.Parse()
 	if *dsn == "" {
-		log.Fatal("-dsn is required")
+		return fmt.Errorf("-dsn is required")
 	}
 
 	database, err := sql.Open("mysql", *dsn)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() {
 		if err := database.Close(); err != nil {
 			log.Printf("database close error: %v", err)
 		}
 	}()
+	startupContext, cancelStartup := context.WithTimeout(context.Background(), databaseStartupTimeout)
+	defer cancelStartup()
+	if err := database.PingContext(startupContext); err != nil {
+		return fmt.Errorf("database startup check failed: %w", err)
+	}
 	reader, err := db.NewReader(database, *prefix)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("create database reader: %w", err)
 	}
 	s := server.NewMCPServer("webtrees-mcp", "0.1.0")
 	webtreesmcp.RegisterTools(s, reader)
@@ -58,25 +79,71 @@ func main() {
 			log.Printf("WARNING: HTTP transport is bound to %s; it has no authentication and may expose genealogy data", *httpHost)
 		}
 		log.Printf("starting webtrees-mcp HTTP transport on http://%s/mcp", address)
-		var httpServer *server.StreamableHTTPServer
-		mux := http.NewServeMux()
-		mux.Handle("/mcp", accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			httpServer.ServeHTTP(w, r)
-		}), *httpDebug))
-		transportServer := &http.Server{Addr: address, Handler: mux}
-		httpServer = server.NewStreamableHTTPServer(s,
-			server.WithStateLess(true),
-			server.WithStreamableHTTPServer(transportServer),
-		)
-		if err := httpServer.Start(address); err != nil {
-			log.Printf("HTTP server error: %v", err)
-		}
-		return
+		return serveHTTP(s, address, *httpDebug)
 	}
 	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if err := server.ServeStdio(s); err != nil {
-		log.Printf("server error: %v", err)
+		return fmt.Errorf("stdio server: %w", err)
 	}
+	return nil
+}
+
+func serveHTTP(mcpServer *server.MCPServer, address string, debug bool) error {
+	var transport *server.StreamableHTTPServer
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		transport.ServeHTTP(w, r)
+	}), debug))
+	// The database has already passed the startup check before this handler is
+	// installed. The endpoints intentionally expose no connection details.
+	mux.Handle("/healthz", accessLog(statusHandler("ok", http.StatusOK), debug))
+	mux.Handle("/readyz", accessLog(statusHandler("ready", http.StatusOK), debug))
+	transportServer := &http.Server{Addr: address, Handler: mux}
+	transport = server.NewStreamableHTTPServer(mcpServer,
+		server.WithStateLess(true),
+		server.WithStreamableHTTPServer(transportServer),
+	)
+
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- transport.Start(address) }()
+
+	signalContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	select {
+	case err := <-serveErrors:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("HTTP server: %w", err)
+	case <-signalContext.Done():
+		log.Printf("shutdown signal received; stopping HTTP server")
+	}
+
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancelShutdown()
+	if err := transportServer.Shutdown(shutdownContext); err != nil {
+		return fmt.Errorf("HTTP graceful shutdown: %w", err)
+	}
+	if err := <-serveErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("HTTP server after shutdown: %w", err)
+	}
+	return nil
+}
+
+func statusHandler(status string, responseStatus int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		body := fmt.Sprintf(`{"status":%q}`, status)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(responseStatus)
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, body+"\n")
+		}
+	})
 }
 
 type accessLogResponseWriter struct {
