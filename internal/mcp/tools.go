@@ -14,14 +14,14 @@ import (
 
 func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	tool := framework.NewTool("get_person",
-		framework.WithDescription("Use when you have an exact person_id and need that person's dates, events, alternate names, family links, notes, or sources. Do not use for name searches; call search_persons first and then chain the returned ID here."),
+		framework.WithDescription("Use when you have an exact person_id and need verified person details. Do not use for name searches or unverified identity; call search_persons first. Chain the returned person_id here. Read content as the complete factual result; do not infer omitted facts."),
 		framework.WithOutputSchema[personResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("person_id", framework.Required(), framework.Description("Individual xref, for example I1")),
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need to find people by indexed name, sex, or birth/death year bounds. Required: non-blank tree_id and surname. Optional: given_name, sex, birth_year_min, birth_year_max, death_year_min, death_year_max, limit (default 10, range 1-100), and offset (default 0, range 0-10000). Do not use this as a raw GEDCOM search; filters are applied to indexed fields and results are research leads until verified. Chain selected person IDs into get_person for full evidence."),
+		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts. Chain a returned person_id into get_person. Read content as the factual lead record."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
@@ -36,20 +36,20 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
 	), searchPersonsHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
-		framework.WithDescription("Use when you have an exact family_id and need its parent/child links, family events, notes, or sources. Chain the returned person IDs into get_person; do not infer relationships from surnames."),
+		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not infer relationships from surnames or missing links. Chain returned person_id values into get_person."),
 		framework.WithOutputSchema[familyOutputDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("relationship_path",
-		framework.WithDescription("Use when you need an evidence-backed relationship path between two known individuals in one tree. Do not infer a relationship from surnames or incomplete data; this follows explicit family links and may return no path within the bounded search. Chain each returned person_id or family_id into get_person or get_family for detail."),
+		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person or get_family."),
 		framework.WithOutputSchema[relationshipPathResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
 		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
 	), relationshipPathHandler(reader))
 	s.AddTool(framework.NewTool("search_events",
-		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date, and use the preferred YYYY-MM-DD format when possible. Results are bounded and paged; chain returned person_id values into get_person for full evidence."),
+		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person for full evidence."),
 		framework.WithOutputSchema[eventSearchResultsDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("event_type", framework.Description("GEDCOM event type, for example BIRT, DEAT, or MARR")),
@@ -60,7 +60,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithInteger("offset", framework.Description("Number of matching events to skip; defaults to 0")),
 	), searchEventsHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
-		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Do not use after the tree is selected. Results are ordered by tree ID and paged with limit and offset. Chain the selected tree_id into every subsequent genealogy query."),
+		framework.WithDescription("Use when tree_id is unknown or you must choose a tree. Do not use after selecting a tree. Results are ordered and paged. Chain the selected tree_id into every subsequent genealogy query."),
 		framework.WithOutputSchema[treesResultDTO](),
 		framework.WithInteger("limit", framework.Description("Maximum number of trees; defaults to 10 and is capped at 100")),
 		framework.WithInteger("offset", framework.Description("Number of trees to skip; defaults to 0"))), listTreesHandler(reader))
@@ -69,10 +69,10 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		desc string
 		fn   func(genealogy.Repository, string, int, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "Use when looking for recorded births in a tree. Do not treat the ranking as proof of the historically latest event. Results are ordered by parsed birth year and person ID, and paged with limit and offset; chain returned person IDs into get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_born", "Use when looking for recorded births in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed birth year and person ID. Chain returned person IDs into get_person for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyBorn(treeID, limit, offset)
 		}},
-		{"list_recently_deceased", "Use when looking for recorded deaths in a tree. Do not treat the ranking as proof of the historically latest event. Results are ordered by parsed death year and person ID, and paged with limit and offset; chain returned person IDs into get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_deceased", "Use when looking for recorded deaths in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed death year and person ID. Chain returned person IDs into get_person for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyDeceased(treeID, limit, offset)
 		}},
 	} {

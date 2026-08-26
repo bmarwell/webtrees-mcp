@@ -50,6 +50,9 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		}
 	}
 	searchTool := mcpServer.GetTool("search_persons")
+	if !strings.Contains(strings.ToLower(searchTool.Tool.Description), "read content") {
+		t.Errorf("search_persons description lacks content guidance: %q", searchTool.Tool.Description)
+	}
 	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
 		t.Error("search_persons lacks include_indirect input metadata")
 	}
