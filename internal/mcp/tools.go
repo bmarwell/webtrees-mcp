@@ -103,7 +103,7 @@ func searchEventsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(eventSearchResults(events), fmt.Sprintf("Found %d matching events.", len(events)))
+		return structuredResult(eventSearchResults(events), eventSearchSummary(events))
 	}
 }
 
@@ -130,9 +130,28 @@ func relationshipPathHandler(reader genealogy.Repository) server.ToolHandlerFunc
 
 func relationshipPathSummary(fromID, toID string, found bool, path []domain.RelationshipPathStep) string {
 	if !found {
-		return fmt.Sprintf("No explicit relationship path found between %s and %s.", fromID, toID)
+		return fmt.Sprintf("Relationship path: none found\nFrom: %s\nTo: %s", fromID, toID)
 	}
-	return fmt.Sprintf("Found an explicit relationship path from %s to %s with %d hops.", fromID, toID, len(path))
+	lines := []string{fmt.Sprintf("Relationship path: %s -> %s", fromID, toID), fmt.Sprintf("Hops: %d", len(path))}
+	for _, step := range path {
+		lines = append(lines, fmt.Sprintf("- %s -> %s via %s (%s)", step.FromPersonID, step.ToPersonID, step.FamilyID, step.Relationship))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func eventSearchSummary(events []domain.EventSearchResult) string {
+	if len(events) == 0 {
+		return "Events: none found."
+	}
+	lines := []string{fmt.Sprintf("Events: %d", len(events))}
+	for _, event := range events {
+		line := fmt.Sprintf("- Person: %s; Type: %s; Date: %s", event.PersonID, strings.ToUpper(event.Type), event.Date)
+		if event.Place != "" {
+			line += "; Place: " + event.Place
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
@@ -258,32 +277,90 @@ func personSummary(person domain.Person) string {
 	if name == "" {
 		name = "Unknown person"
 	}
-	summary := fmt.Sprintf("Person %q (%s)", name, person.ID)
-	events := make([]string, 0, 2)
-	if person.BirthDate != "" {
-		events = append(events, "was born on "+person.BirthDate)
-	} else {
-		events = append(events, "has no recorded birth date")
+	lines := []string{fmt.Sprintf("Person: %s (%s)", name, person.ID)}
+	eventLines := personEventSummaryLines(person)
+	if len(eventLines) > 0 {
+		lines = append(lines, "Events:")
+		lines = append(lines, eventLines...)
 	}
-	if person.DeathDate != "" {
-		events = append(events, "died on "+person.DeathDate)
+	if person.Sex != "" {
+		lines = append(lines, "Sex: "+person.Sex)
 	}
-	summary += " " + joinPhrases(events) + "."
-	if person.Occupation != "" {
-		summary += " They worked as " + person.Occupation + "."
+	if len(person.Names) > 1 {
+		lines = append(lines, "Alternate names:")
+		for _, alternate := range person.Names[1:] {
+			lines = append(lines, "- "+displayNameValue(alternate))
+		}
 	}
 	if len(person.Relatives) > 0 {
-		relatives := make([]string, 0, len(person.Relatives))
+		lines = append(lines, "Relatives:")
 		for _, relative := range person.Relatives {
+			description := relative.PersonID
 			if relative.Relationship != "" {
-				relatives = append(relatives, relative.PersonID+" ("+relative.Relationship+")")
-			} else {
-				relatives = append(relatives, relative.PersonID)
+				description += " (" + relative.Relationship + ")"
 			}
+			lines = append(lines, "- "+description)
 		}
-		summary += " Associated people: " + strings.Join(relatives, ", ") + "."
 	}
-	return summary
+	if len(person.FamilyLinks) > 0 {
+		lines = append(lines, "Family links:")
+		for _, link := range person.FamilyLinks {
+			lines = append(lines, "- "+link.FamilyID+" ("+link.Role+")")
+		}
+	}
+	if len(person.Notes) > 0 {
+		lines = append(lines, "Notes:")
+		for _, note := range person.Notes {
+			lines = append(lines, "- "+note)
+		}
+	}
+	if len(person.Sources) > 0 {
+		lines = append(lines, "Sources:")
+		for _, source := range person.Sources {
+			line := source.ID
+			if source.Title != "" {
+				line += " (" + source.Title + ")"
+			}
+			lines = append(lines, "- "+line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func personEventSummaryLines(person domain.Person) []string {
+	lines := make([]string, 0, len(person.Events)+3)
+	hasBirth, hasDeath, hasOccupation := false, false, false
+	for _, event := range person.Events {
+		tag := strings.ToUpper(event.Type)
+		if tag == "BIRT" {
+			hasBirth = true
+		}
+		if tag == "DEAT" {
+			hasDeath = true
+		}
+		if tag == "OCCU" {
+			hasOccupation = true
+		}
+		lines = append(lines, eventSummaryLine(event))
+	}
+	if person.BirthDate != "" && !hasBirth {
+		lines = append(lines, "- BIRT: "+person.BirthDate)
+	}
+	if person.DeathDate != "" && !hasDeath {
+		lines = append(lines, "- DEAT: "+person.DeathDate)
+	}
+	if person.Occupation != "" && !hasOccupation {
+		lines = append(lines, "- OCCU: "+person.Occupation)
+	}
+	return lines
+}
+
+func displayNameValue(name domain.Name) string {
+	value := strings.TrimSpace(strings.Join([]string{name.Given, name.Surname}, " "))
+	if name.Type != "" {
+		value += " (" + name.Type + ")"
+	}
+	return value
 }
 
 func joinPhrases(phrases []string) string {
@@ -311,22 +388,48 @@ func peopleSummary(people []domain.Person, prefix string) string {
 	for _, person := range people {
 		summaries = append(summaries, personSummary(person))
 	}
-	return prefix + " " + strings.Join(summaries, " ")
+	return prefix + "\n\n" + strings.Join(summaries, "\n\n")
 }
 
 func familySummary(family domain.Family) string {
-	summary := fmt.Sprintf("Family %s", family.ID)
+	lines := []string{fmt.Sprintf("Family: %s", family.ID)}
 	if len(family.Parents) > 0 {
-		parents := relativeIDs(family.Parents)
-		summary += " has parent " + strings.Join(parents, " and ")
-		if len(parents) > 1 {
-			summary = fmt.Sprintf("Family %s has parents %s", family.ID, strings.Join(parents, " and "))
+		lines = append(lines, "Parents:")
+		for _, parent := range family.Parents {
+			lines = append(lines, "- "+parent.PersonID)
 		}
 	}
 	if len(family.Children) > 0 {
-		summary += "; children: " + strings.Join(relativeIDs(family.Children), ", ")
+		lines = append(lines, "Children:")
+		for _, child := range family.Children {
+			lines = append(lines, "- "+child.PersonID)
+		}
 	}
-	return summary + "."
+	if len(family.Events) > 0 {
+		lines = append(lines, "Events:")
+		for _, event := range family.Events {
+			lines = append(lines, eventSummaryLine(event))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func eventSummaryLine(event domain.Event) string {
+	tag := strings.ToUpper(event.Type)
+	value := event.Value
+	if event.Date != nil {
+		value = event.Date.Raw
+	}
+	if event.Place != "" {
+		if value != "" {
+			value += " in "
+		}
+		value += event.Place
+	}
+	if value == "" {
+		value = "(no details recorded)"
+	}
+	return "- " + tag + ": " + value
 }
 
 func relativeIDs(relatives []domain.Relative) []string {
@@ -339,18 +442,18 @@ func relativeIDs(relatives []domain.Relative) []string {
 
 func treesSummary(trees []domain.Tree) string {
 	if len(trees) == 0 {
-		return "No trees found."
+		return "Trees: none found."
 	}
-	descriptions := make([]string, 0, len(trees))
+	lines := []string{fmt.Sprintf("Trees: %d", len(trees))}
 	for _, tree := range trees {
-		description := tree.ID
+		description := "- " + tree.ID
 		if tree.Name != "" {
-			description += fmt.Sprintf(" (%q)", tree.Name)
+			description += "; name: " + tree.Name
 		}
 		if tree.Title != "" {
-			description += ": " + tree.Title
+			description += "; title: " + tree.Title
 		}
-		descriptions = append(descriptions, description)
+		lines = append(lines, description)
 	}
-	return fmt.Sprintf("Found %d trees: %s.", len(trees), strings.Join(descriptions, "; "))
+	return strings.Join(lines, "\n")
 }

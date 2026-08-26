@@ -170,7 +170,7 @@ parent and child IDs into `get_person`. The recent-birth and recent-death
 tools are rankings by parsed year, not proof that the event is historically
 the latest; inspect the detailed person events before making that claim.
 
-Every successful tool result has a concise human-readable `content` summary
+Every successful tool result has a concise, line-oriented human-readable `content` summary
 and an object-shaped `structuredContent` value matching the tool's advertised
 output schema. Collection results are wrapped in `people` or `trees`. Error
 results use diagnostic `content` and should not be treated as successful
@@ -197,10 +197,19 @@ and chain returned IDs into detail tools.
 It returns JSON in this shape:
 
 Tool results carry the native payload in `structuredContent` and a concise,
-human-readable summary in `content`. The summary uses available genealogy
-fields such as names, identifiers, dates, occupations, relationships, and
-family links; unavailable details such as event places or marriage dates are
-not invented.
+human-readable summary in `content`. The summary uses stable labels and one
+fact per line so that models can extract facts without parsing prose. Person
+events use their GEDCOM tags (for example `BIRT`, `DEAT`, and `OCCU`) and include
+available dates and places; unavailable details are not invented. For example:
+
+[source,text]
+----
+Person: Casey Example (I7)
+Events:
+- BIRT: 1 JAN 1900 in Exampletown
+- DEAT: 15 MAY 1950
+- OCCU: Software Engineer
+----
 
 Successful tool results always include a JSON-object `structuredContent` value.
 Collection results are wrapped in named fields such as `people` or `trees`
