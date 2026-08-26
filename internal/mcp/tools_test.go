@@ -56,6 +56,10 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
 		t.Error("search_persons lacks include_indirect input metadata")
 	}
+	matchModeSchema, ok := searchTool.Tool.InputSchema.Properties["match_mode"].(map[string]any)
+	if !ok || matchModeSchema["default"] != "prefix" || !reflect.DeepEqual(matchModeSchema["enum"], []string{"exact", "prefix", "fuzzy"}) {
+		t.Errorf("unexpected search_persons match_mode schema: %#v", searchTool.Tool.InputSchema.Properties["match_mode"])
+	}
 	limitSchema, ok := searchTool.Tool.InputSchema.Properties["limit"].(map[string]any)
 	if !ok || limitSchema["default"] != 10 || limitSchema["minimum"] != 1 || limitSchema["maximum"] != 100 {
 		t.Errorf("unexpected search_persons limit schema: %#v", searchTool.Tool.InputSchema.Properties["limit"])
@@ -91,6 +95,7 @@ func TestSearchPersonsRejectsInvalidInput(t *testing.T) {
 		{name: "limit too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": 101}},
 		{name: "negative offset", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": -1}},
 		{name: "offset too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": 10001}},
+		{name: "unknown match mode", args: map[string]any{"tree_id": "tree", "surname": "Example", "match_mode": "contains"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := handler(context.Background(), framework.CallToolRequest{

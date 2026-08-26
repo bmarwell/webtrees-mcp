@@ -20,6 +20,7 @@ type PersonSearchCriteria struct {
 	TreeID          string
 	Surname         string
 	GivenName       string
+	MatchMode       string
 	Sex             string
 	BirthYearMin    *int
 	BirthYearMax    *int
@@ -31,9 +32,10 @@ type PersonSearchCriteria struct {
 }
 
 const (
-	DefaultPageSize = 10
-	MaxPageSize     = 100
-	MaxPageOffset   = 10000
+	DefaultPageSize    = 10
+	MaxPageSize        = 100
+	MaxPageOffset      = 10000
+	MaxFuzzyCandidates = 1000
 )
 
 func NormalizePage(limit, offset int) (int, int) {

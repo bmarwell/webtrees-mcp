@@ -21,12 +21,13 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts. Chain a returned person_id into get_person. Read content as the factual lead record."),
+		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person. Read content as the factual lead record."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
 		framework.WithString("given_name", framework.MinLength(1), framework.Description("Optional given-name fragment, matched against the indexed given-name field")),
 		framework.WithString("sex", framework.MinLength(1), framework.Description("Optional indexed sex value, for example F or M")),
+		framework.WithString("match_mode", framework.Enum("exact", "prefix", "fuzzy"), framework.DefaultString("prefix"), framework.Description("Name matching strategy; exact equality, indexed prefix, or bounded fuzzy matching")),
 		framework.WithBoolean("include_indirect", framework.DefaultBool(false), framework.Description("Deprecated compatibility option; indexed searches do not scan indirect GEDCOM text")),
 		framework.WithInteger("birth_year_min", framework.Description("Optional inclusive minimum indexed birth year")),
 		framework.WithInteger("birth_year_max", framework.Description("Optional inclusive maximum indexed birth year")),
@@ -167,6 +168,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 			Surname         string `json:"surname"`
 			GivenName       string `json:"given_name"`
 			Sex             string `json:"sex"`
+			MatchMode       string `json:"match_mode"`
 			IncludeIndirect bool   `json:"include_indirect"`
 			BirthYearMin    *int   `json:"birth_year_min"`
 			BirthYearMax    *int   `json:"birth_year_max"`
@@ -188,6 +190,13 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		}
 		args.GivenName = strings.TrimSpace(args.GivenName)
 		args.Sex = strings.TrimSpace(args.Sex)
+		args.MatchMode = strings.ToLower(strings.TrimSpace(args.MatchMode))
+		if args.MatchMode == "" {
+			args.MatchMode = "prefix"
+		}
+		if args.MatchMode != "exact" && args.MatchMode != "prefix" && args.MatchMode != "fuzzy" {
+			return framework.NewToolResultError("match_mode must be exact, prefix, or fuzzy"), nil
+		}
 		if args.Limit < 0 || args.Limit > genealogy.MaxPageSize {
 			return framework.NewToolResultError(fmt.Sprintf("limit must be between 1 and %d (or omitted)", genealogy.MaxPageSize)), nil
 		}
@@ -201,7 +210,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 			return framework.NewToolResultError("death_year_min must not be greater than death_year_max"), nil
 		}
 		results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
-			TreeID: args.TreeID, Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex,
+			TreeID: args.TreeID, Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex, MatchMode: args.MatchMode,
 			BirthYearMin: args.BirthYearMin, BirthYearMax: args.BirthYearMax,
 			DeathYearMin: args.DeathYearMin, DeathYearMax: args.DeathYearMax,
 			IncludeIndirect: args.IncludeIndirect, Limit: args.Limit, Offset: args.Offset,

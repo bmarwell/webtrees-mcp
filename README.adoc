@@ -138,7 +138,11 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 `search_persons` requires non-blank string values for `tree_id` and `surname`.
 It also accepts optional indexed `given_name` and `sex` fragments, inclusive
 `birth_year_min`, `birth_year_max`, `death_year_min`, and `death_year_max`
-bounds. Surrounding whitespace is ignored. Optional pagination uses integer
+bounds. `match_mode` controls name matching: `exact` uses indexed equality,
+`prefix` uses an indexed prefix (the default), and `fuzzy` uses a bounded
+indexed-prefix candidate set followed by deterministic Levenshtein matching
+with a maximum distance of 2. Fuzzy searches can miss candidates outside the
+bounded candidate set. Surrounding whitespace is ignored. Optional pagination uses integer
 `limit` (default `10`, allowed range `1`-`100`) and `offset` (default `0`,
 allowed range `0`-`10000`). Invalid values and reversed year bounds are
 rejected. Candidate selection is performed by `wt_name` and indexed individual

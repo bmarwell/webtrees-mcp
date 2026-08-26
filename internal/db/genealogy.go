@@ -167,15 +167,21 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 
 func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domain.PersonSearchResult, error) {
 	limit, offset := genealogy.NormalizePage(criteria.Limit, criteria.Offset)
+	mode := criteria.MatchMode
+	if mode == "" {
+		mode = "prefix"
+	}
 	conditions := []string{"i.i_file = ?"}
 	args := []any{criteria.TreeID}
 	if criteria.Surname != "" {
-		conditions = append(conditions, "n.n_surname LIKE ?")
-		args = append(args, "%"+criteria.Surname+"%")
+		operator, value := nameMatchSQL(mode, criteria.Surname)
+		conditions = append(conditions, "n.n_surname "+operator+" ?")
+		args = append(args, value)
 	}
 	if criteria.GivenName != "" {
-		conditions = append(conditions, "n.n_givn LIKE ?")
-		args = append(args, "%"+criteria.GivenName+"%")
+		operator, value := nameMatchSQL(mode, criteria.GivenName)
+		conditions = append(conditions, "n.n_givn "+operator+" ?")
+		args = append(args, value)
 	}
 	if criteria.Sex != "" {
 		conditions = append(conditions, "i.i_sex = ?")
@@ -197,7 +203,11 @@ func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domai
 		}
 	}
 	query := fmt.Sprintf("SELECT DISTINCT i.i_id, i.i_gedcom FROM %s_individuals i INNER JOIN %s_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE %s ORDER BY i.i_id LIMIT ? OFFSET ?", r.prefix, r.prefix, strings.Join(conditions, " AND "))
-	args = append(args, limit, offset)
+	if mode == "fuzzy" {
+		args = append(args, genealogy.MaxFuzzyCandidates, 0)
+	} else {
+		args = append(args, limit, offset)
+	}
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -210,12 +220,99 @@ func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domai
 			return nil, err
 		}
 		person := parseIndividualGEDCOM(id, raw)
-		people = append(people, domain.PersonSearchResult{Person: person, Match: domain.SearchMatch{DirectHit: true, Fields: []string{"name"}}})
+		result := domain.PersonSearchResult{Person: person, Match: domain.SearchMatch{DirectHit: true, Fields: []string{"surname"}}}
+		if criteria.GivenName != "" {
+			result.Match.Fields = append(result.Match.Fields, "given_name")
+		}
+		if mode == "fuzzy" {
+			distance, matched := fuzzyPersonDistance(person, criteria.Surname, criteria.GivenName)
+			if !matched {
+				continue
+			}
+			result.Match.Fields = append(result.Match.Fields, fmt.Sprintf("fuzzy_distance:%d", distance))
+			people = append(people, result)
+			continue
+		}
+		people = append(people, result)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if mode == "fuzzy" {
+		sort.SliceStable(people, func(i, j int) bool {
+			return fuzzyDistance(people[i].Match.Fields) < fuzzyDistance(people[j].Match.Fields)
+		})
+		if offset >= len(people) {
+			return []domain.PersonSearchResult{}, nil
+		}
+		people = people[offset:]
+		if len(people) > limit {
+			people = people[:limit]
+		}
+	}
 	return people, nil
+}
+
+func nameMatchSQL(mode, value string) (string, string) {
+	switch mode {
+	case "exact":
+		return "=", value
+	case "fuzzy":
+		return "LIKE", value[:1] + "%"
+	default:
+		return "LIKE", value + "%"
+	}
+}
+
+func fuzzyPersonDistance(person domain.Person, surname, givenName string) (int, bool) {
+	best := genealogy.MaxFuzzyCandidates
+	for _, name := range person.Names {
+		distance := levenshtein(strings.ToLower(name.Surname), strings.ToLower(surname))
+		if givenName != "" {
+			distance += levenshtein(strings.ToLower(name.Given), strings.ToLower(givenName))
+		}
+		if distance < best {
+			best = distance
+		}
+	}
+	if len(person.Names) == 0 {
+		best = levenshtein(strings.ToLower(person.Name.Surname), strings.ToLower(surname))
+		if givenName != "" {
+			best += levenshtein(strings.ToLower(person.Name.Given), strings.ToLower(givenName))
+		}
+	}
+	return best, best <= 2
+}
+
+func levenshtein(left, right string) int {
+	a, b := []rune(left), []rune(right)
+	previous := make([]int, len(b)+1)
+	for j := range previous {
+		previous[j] = j
+	}
+	for i, leftRune := range a {
+		current := []int{i + 1}
+		for j, rightRune := range b {
+			cost := 0
+			if leftRune != rightRune {
+				cost = 1
+			}
+			current = append(current, min(current[j]+1, previous[j+1]+1, previous[j]+cost))
+		}
+		previous = current
+	}
+	return previous[len(b)]
+}
+
+func fuzzyDistance(fields []string) int {
+	for _, field := range fields {
+		if strings.HasPrefix(field, "fuzzy_distance:") {
+			var distance int
+			_, _ = fmt.Sscanf(field, "fuzzy_distance:%d", &distance)
+			return distance
+		}
+	}
+	return genealogy.MaxFuzzyCandidates
 }
 
 func searchMatch(person domain.Person, query string) domain.SearchMatch {

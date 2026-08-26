@@ -87,3 +87,31 @@ func TestSearchMatchDistinguishesNameAndRecordHits(t *testing.T) {
 		t.Fatalf("expected indirect record hit, got %+v", match)
 	}
 }
+
+func TestNameMatchSQLUsesExactPrefixAndBoundedFuzzyModes(t *testing.T) {
+	tests := []struct {
+		mode, wantOperator, wantValue string
+	}{
+		{mode: "exact", wantOperator: "=", wantValue: "Mayer"},
+		{mode: "prefix", wantOperator: "LIKE", wantValue: "Mayer%"},
+		{mode: "fuzzy", wantOperator: "LIKE", wantValue: "M%"},
+	}
+	for _, test := range tests {
+		t.Run(test.mode, func(t *testing.T) {
+			operator, value := nameMatchSQL(test.mode, "Mayer")
+			if operator != test.wantOperator || value != test.wantValue {
+				t.Errorf("nameMatchSQL() = %q, %q; want %q, %q", operator, value, test.wantOperator, test.wantValue)
+			}
+		})
+	}
+}
+
+func TestFuzzyPersonDistanceHasStrictBound(t *testing.T) {
+	person := domain.Person{Name: domain.Name{Given: "Ada", Surname: "Mayer"}}
+	if distance, matched := fuzzyPersonDistance(person, "Mayer", ""); distance != 0 || !matched {
+		t.Fatalf("exact fuzzy match = %d, %t", distance, matched)
+	}
+	if distance, matched := fuzzyPersonDistance(person, "Completely different", ""); matched || distance <= 2 {
+		t.Fatalf("distant fuzzy match = %d, %t", distance, matched)
+	}
+}
