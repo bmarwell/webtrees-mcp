@@ -142,17 +142,22 @@ func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
 
 func personSummary(person model.PersonDTO) string {
 	name := displayName(person)
+	if name == "" {
+		name = "Unknown person"
+	}
 	summary := fmt.Sprintf("Person %q (%s)", name, person.ID)
+	events := make([]string, 0, 2)
 	if person.BirthDate != "" {
-		summary += " was born on " + person.BirthDate
+		events = append(events, "was born on "+person.BirthDate)
 	} else {
-		summary += " has no recorded birth date"
+		events = append(events, "has no recorded birth date")
 	}
 	if person.DeathDate != "" {
-		summary += " and died on " + person.DeathDate
+		events = append(events, "died on "+person.DeathDate)
 	}
+	summary += " " + joinPhrases(events) + "."
 	if person.Occupation != "" {
-		summary += ". They worked as " + person.Occupation
+		summary += " They worked as " + person.Occupation + "."
 	}
 	if len(person.Relatives) > 0 {
 		relatives := make([]string, 0, len(person.Relatives))
@@ -163,9 +168,22 @@ func personSummary(person model.PersonDTO) string {
 				relatives = append(relatives, relative.PersonID)
 			}
 		}
-		summary += ". Associated people: " + strings.Join(relatives, ", ")
+		summary += " Associated people: " + strings.Join(relatives, ", ") + "."
 	}
-	return summary + "."
+	return summary
+}
+
+func joinPhrases(phrases []string) string {
+	switch len(phrases) {
+	case 0:
+		return ""
+	case 1:
+		return phrases[0]
+	case 2:
+		return phrases[0] + " and " + phrases[1]
+	default:
+		return strings.Join(phrases[:len(phrases)-1], ", ") + ", and " + phrases[len(phrases)-1]
+	}
 }
 
 func displayName(person model.PersonDTO) string {

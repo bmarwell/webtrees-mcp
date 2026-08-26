@@ -143,6 +143,97 @@ not invented.
 }
 ----
 
+The following response examples use fictional data. A person result includes
+both a readable summary and the native structured payload:
+
+[source,json]
+----
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Person \"Ada Mayer\" (I44) was born on 1982 and died on 2026. They worked as Carpenter. Associated people: I45 (spouse), I46 (child), I47 (child)."
+    }
+  ],
+  "structuredContent": {
+    "id": "I44",
+    "name": {
+      "given": "Ada",
+      "surname": "Mayer"
+    },
+    "birth_date": "1982",
+    "death_date": "2026",
+    "occupation": "Carpenter",
+    "relatives": [
+      {
+        "person_id": "I45",
+        "relationship": "spouse"
+      },
+      {
+        "person_id": "I46",
+        "relationship": "child"
+      },
+      {
+        "person_id": "I47",
+        "relationship": "child"
+      }
+    ]
+  }
+}
+----
+
+Family results summarize the available links without inventing names or event
+details that are not part of the returned family data:
+
+[source,json]
+----
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Family F12 has parents I44 and I45; children: I46, I47."
+    }
+  ],
+  "structuredContent": {
+    "family_id": "F12",
+    "parents": [
+      {"person_id": "I44", "relationship": "parent"},
+      {"person_id": "I45", "relationship": "parent"}
+    ],
+    "children": [
+      {"person_id": "I46", "relationship": "child"},
+      {"person_id": "I47", "relationship": "child"}
+    ]
+  }
+}
+----
+
+List and search tools use the same pattern. For example, a fictional surname
+search might return this summary:
+
+[source,json]
+----
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Found 2 people matching surname \"Mayer\". Person \"Ada Mayer\" (I44) was born on 1982. Person \"Bruno Mayer\" (I48) has no recorded birth date."
+    }
+  ],
+  "structuredContent": [
+    {
+      "id": "I44",
+      "name": {"given": "Ada", "surname": "Mayer"},
+      "birth_date": "1982"
+    },
+    {
+      "id": "I48",
+      "name": {"given": "Bruno", "surname": "Mayer"}
+    }
+  ]
+}
+----
+
 == Project layout
 
 * `internal/db` contains the read-only database repository.
