@@ -84,6 +84,20 @@ type treesResultDTO struct {
 	Trees []treeOutput `json:"trees"`
 }
 
+type relationshipPathStepOutput struct {
+	FromPersonID string `json:"from_person_id"`
+	ToPersonID   string `json:"to_person_id"`
+	FamilyID     string `json:"family_id"`
+	Relationship string `json:"relationship"`
+}
+
+type relationshipPathResultDTO struct {
+	FromPersonID string                       `json:"from_person_id"`
+	ToPersonID   string                       `json:"to_person_id"`
+	Found        bool                         `json:"found"`
+	Path         []relationshipPathStepOutput `json:"path"`
+}
+
 func personResult(person domain.Person) personResultDTO {
 	return personResultDTO{
 		ID:             person.ID,
@@ -195,4 +209,12 @@ func treeOutputs(trees []domain.Tree) []treeOutput {
 
 func treesResult(trees []domain.Tree) treesResultDTO {
 	return treesResultDTO{Trees: treeOutputs(trees)}
+}
+
+func relationshipPathResult(fromID, toID string, found bool, path []domain.RelationshipPathStep) relationshipPathResultDTO {
+	steps := make([]relationshipPathStepOutput, 0, len(path))
+	for _, step := range path {
+		steps = append(steps, relationshipPathStepOutput{FromPersonID: step.FromPersonID, ToPersonID: step.ToPersonID, FamilyID: step.FamilyID, Relationship: step.Relationship})
+	}
+	return relationshipPathResultDTO{FromPersonID: fromID, ToPersonID: toID, Found: found, Path: steps}
 }

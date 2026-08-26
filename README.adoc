@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person`, `search_persons`, `get_family`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -135,6 +135,11 @@ query occurs elsewhere in the GEDCOM record; those results are marked with
 `match.direct_hit: false` and should normally be deprioritized by an agent.
 `get_family` accepts `tree_id` and `family_id`, returning parent and child links
 without embedding duplicate person objects.
+
+`relationship_path` accepts `tree_id`, `from_person_id`, and `to_person_id`.
+It follows explicit family links for a bounded shortest-path search and returns
+each hop with its `family_id` evidence and relationship kind. A missing path is
+reported with `found: false`; surnames and inferred relationships are not used.
 
 `list_tree_ids` accepts optional `limit` and `offset` arguments. The born and deceased listing tools accept a `tree_id`, `limit`, and `offset`. Limits default to `10` and are capped at `100`; offsets default to `0`. Tree IDs are ordered ascending, while recent-person lists are ordered by event year descending and person ID ascending as a deterministic tie-breaker. Request the next page by increasing `offset` by the previous `limit`. All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
 

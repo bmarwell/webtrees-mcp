@@ -34,7 +34,7 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0")
 	RegisterTools(mcpServer, nil)
-	for _, name := range []string{"get_person", "search_persons", "get_family", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"get_person", "search_persons", "get_family", "relationship_path", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)

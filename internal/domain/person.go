@@ -81,3 +81,11 @@ type Family struct {
 	Notes    []string
 	Sources  []Source
 }
+
+// RelationshipPathStep records one explicitly evidenced family hop.
+type RelationshipPathStep struct {
+	FromPersonID string
+	ToPersonID   string
+	FamilyID     string
+	Relationship string
+}

@@ -35,6 +35,13 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
+	s.AddTool(framework.NewTool("relationship_path",
+		framework.WithDescription("Use when you need an evidence-backed relationship path between two known individuals in one tree. Do not infer a relationship from surnames or incomplete data; this follows explicit family links and may return no path within the bounded search. Chain each returned person_id or family_id into get_person or get_family for detail."),
+		framework.WithOutputSchema[relationshipPathResultDTO](),
+		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
+		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
+	), relationshipPathHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
 		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Do not use after the tree is selected. Results are ordered by tree ID and paged with limit and offset. Chain the selected tree_id into every subsequent genealogy query."),
 		framework.WithOutputSchema[treesResultDTO](),
@@ -59,6 +66,34 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 			framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
 		), listPeopleHandler(reader, spec.fn))
 	}
+}
+
+func relationshipPathHandler(reader genealogy.Repository) server.ToolHandlerFunc {
+	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
+		var args struct {
+			TreeID       string `json:"tree_id"`
+			FromPersonID string `json:"from_person_id"`
+			ToPersonID   string `json:"to_person_id"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		if args.TreeID == "" || args.FromPersonID == "" || args.ToPersonID == "" {
+			return framework.NewToolResultError("tree_id, from_person_id, and to_person_id are required"), nil
+		}
+		path, found, err := genealogy.FindRelationshipPath(reader, args.TreeID, args.FromPersonID, args.ToPersonID)
+		if err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		return structuredResult(relationshipPathResult(args.FromPersonID, args.ToPersonID, found, path), relationshipPathSummary(args.FromPersonID, args.ToPersonID, found, path))
+	}
+}
+
+func relationshipPathSummary(fromID, toID string, found bool, path []domain.RelationshipPathStep) string {
+	if !found {
+		return fmt.Sprintf("No explicit relationship path found between %s and %s.", fromID, toID)
+	}
+	return fmt.Sprintf("Found an explicit relationship path from %s to %s with %d hops.", fromID, toID, len(path))
 }
 
 func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
