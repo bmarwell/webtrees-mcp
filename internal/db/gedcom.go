@@ -38,13 +38,24 @@ func parseIndividualGEDCOM(id, rawGEDCOM string) domain.Person {
 	lines := parseGEDCOMLines(rawGEDCOM)
 	var current *domain.Event
 	var currentText *[]string
+	var currentName *domain.Name
 	for _, line := range lines {
 		if line.level == 1 {
 			current = nil
 			currentText = nil
+			currentName = nil
 			switch line.tag {
 			case "NAME":
-				person.Name = parseName(line.value)
+				person.Names = append(person.Names, parseName(line.value))
+				currentName = &person.Names[len(person.Names)-1]
+				if len(person.Names) == 1 {
+					person.Name = person.Names[0]
+				}
+			case "_MARNM":
+				name := parseName(line.value)
+				name.Type = "married"
+				person.Names = append(person.Names, name)
+				currentName = &person.Names[len(person.Names)-1]
 			case "SEX":
 				person.Sex = line.value
 			case "FAMC":
@@ -94,12 +105,18 @@ func parseIndividualGEDCOM(id, rawGEDCOM string) domain.Person {
 				current.Sources = append(current.Sources, domain.Source{ID: trimXref(line.value)})
 			}
 		}
+		if line.level == 2 && currentName != nil && line.tag == "TYPE" {
+			currentName.Type = strings.ToLower(line.value)
+		}
 		if line.level >= 2 && line.tag == "RELA" && len(person.Relatives) > 0 {
 			person.Relatives[len(person.Relatives)-1].Relationship = line.value
 		}
 		if line.level >= 2 && (line.tag == "CONT" || line.tag == "CONC") {
 			appendContinuation(currentText, line.tag, line.value)
 		}
+	}
+	if len(person.Names) > 0 {
+		person.Name = person.Names[0]
 	}
 	return person
 }

@@ -4,6 +4,7 @@ package domain
 type Name struct {
 	Given   string
 	Surname string
+	Type    string
 }
 
 // Relative is a link to another person without embedding that person's data.
@@ -44,6 +45,7 @@ type Event struct {
 type Person struct {
 	ID          string
 	Name        Name
+	Names       []Name
 	Sex         string
 	BirthDate   string
 	DeathDate   string
@@ -53,6 +55,16 @@ type Person struct {
 	Events      []Event
 	Notes       []string
 	Sources     []Source
+}
+
+type SearchMatch struct {
+	DirectHit bool
+	Fields    []string
+}
+
+type PersonSearchResult struct {
+	Person Person
+	Match  SearchMatch
 }
 
 type Tree struct {

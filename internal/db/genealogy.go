@@ -20,22 +20,53 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 	return &person, nil
 }
 
-func (r *Reader) SearchPersons(treeID, surname string) ([]domain.Person, error) {
+func (r *Reader) SearchPersons(treeID, surname string) ([]domain.PersonSearchResult, error) {
 	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ? AND i_gedcom LIKE ? ORDER BY i_id", r.prefix)
 	rows, err := r.db.Query(query, treeID, "%"+surname+"%")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var people []domain.Person
+	var people []domain.PersonSearchResult
 	for rows.Next() {
 		var id, raw string
 		if err := rows.Scan(&id, &raw); err != nil {
 			return nil, err
 		}
-		people = append(people, parseIndividualGEDCOM(id, raw))
+		person := parseIndividualGEDCOM(id, raw)
+		people = append(people, domain.PersonSearchResult{Person: person, Match: searchMatch(person, surname)})
 	}
 	return people, rows.Err()
+}
+
+func searchMatch(person domain.Person, query string) domain.SearchMatch {
+	query = strings.ToLower(strings.TrimSpace(query))
+	names := person.Names
+	if len(names) == 0 && (person.Name.Given != "" || person.Name.Surname != "") {
+		names = []domain.Name{person.Name}
+	}
+	for index, nameValue := range names {
+		name := strings.ToLower(nameValue.Given + " " + nameValue.Surname)
+		if query != "" && strings.Contains(name, query) {
+			field := "name"
+			if index > 0 {
+				field = nameSearchField(nameValue.Type)
+			}
+			return domain.SearchMatch{DirectHit: true, Fields: []string{field}}
+		}
+	}
+	return domain.SearchMatch{Fields: []string{"gedcom_record"}}
+}
+
+func nameSearchField(nameType string) string {
+	switch strings.ToLower(nameType) {
+	case "birth", "maiden":
+		return "birth_name"
+	case "married":
+		return "married_name"
+	default:
+		return "alternate_name"
+	}
 }
 
 func (r *Reader) GetFamily(treeID, xref string) (*domain.Family, error) {

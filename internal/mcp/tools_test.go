@@ -67,6 +67,16 @@ func TestCollectionResultsUseObjectShapes(t *testing.T) {
 	}
 }
 
+func TestSearchPersonResultIncludesMatchMetadata(t *testing.T) {
+	result := searchPersonResult(domain.PersonSearchResult{
+		Person: domain.Person{ID: "I44"},
+		Match:  domain.SearchMatch{DirectHit: false, Fields: []string{"gedcom_record"}},
+	})
+	if result.Match == nil || result.Match.DirectHit || len(result.Match.Fields) != 1 || result.Match.Fields[0] != "gedcom_record" {
+		t.Fatalf("unexpected search match metadata: %+v", result.Match)
+	}
+}
+
 func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 	tests := []struct {
 		name   string

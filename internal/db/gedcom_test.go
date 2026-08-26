@@ -1,10 +1,17 @@
 package db
 
-import "testing"
+import (
+	"testing"
+
+	"webtrees-mcp/internal/domain"
+)
 
 func TestParseIndividualGEDCOMPreservesEventsAndRelationships(t *testing.T) {
 	raw := "0 @I44@ INDI\n" +
 		"1 NAME Ada /Mayer/\n" +
+		"2 TYPE birth\n" +
+		"1 NAME Ada /Doe/\n" +
+		"2 TYPE married\n" +
 		"1 SEX F\n" +
 		"1 FAMC @F1@\n" +
 		"1 FAMS @F2@\n" +
@@ -23,6 +30,9 @@ func TestParseIndividualGEDCOMPreservesEventsAndRelationships(t *testing.T) {
 	person := parseIndividualGEDCOM("I44", raw)
 	if person.BirthDate != "ABT 1982" || person.DeathDate != "BET 2025 AND 2026" || person.Occupation != "Carpenter" {
 		t.Fatalf("legacy fields were not preserved: %+v", person)
+	}
+	if len(person.Names) != 2 || person.Names[0].Type != "birth" || person.Names[1].Surname != "Doe" || person.Names[1].Type != "married" {
+		t.Fatalf("name variants were not preserved: %+v", person.Names)
 	}
 	if len(person.Events) != 4 {
 		t.Fatalf("expected four events, got %d: %+v", len(person.Events), person.Events)
@@ -65,5 +75,15 @@ func TestParseFamilyGEDCOMPreservesEventsNotesAndSources(t *testing.T) {
 	}
 	if len(family.Events[0].Notes) != 1 || family.Events[0].Notes[0] != "Civil recordreference" {
 		t.Fatalf("family note continuation was not parsed: %+v", family.Events[0].Notes)
+	}
+}
+
+func TestSearchMatchDistinguishesNameAndRecordHits(t *testing.T) {
+	person := domain.Person{Name: domain.Name{Given: "Ada", Surname: "Mayer"}}
+	if match := searchMatch(person, "mayer"); !match.DirectHit || len(match.Fields) != 1 || match.Fields[0] != "name" {
+		t.Fatalf("expected direct name hit, got %+v", match)
+	}
+	if match := searchMatch(person, "carpenter"); match.DirectHit || len(match.Fields) != 1 || match.Fields[0] != "gedcom_record" {
+		t.Fatalf("expected indirect record hit, got %+v", match)
 	}
 }

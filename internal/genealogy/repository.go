@@ -6,7 +6,7 @@ import "webtrees-mcp/internal/domain"
 // SQL, fixtures, or another data source without leaking their representations.
 type Repository interface {
 	GetPerson(treeID, personID string) (*domain.Person, error)
-	SearchPersons(treeID, surname string) ([]domain.Person, error)
+	SearchPersons(treeID, surname string) ([]domain.PersonSearchResult, error)
 	GetFamily(treeID, familyID string) (*domain.Family, error)
 	ListTrees() ([]domain.Tree, error)
 	ListRecentlyBorn(treeID string, limit int) ([]domain.Person, error)

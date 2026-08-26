@@ -177,6 +177,13 @@ both a readable summary and the native structured payload:
       "given": "Ada",
       "surname": "Mayer"
     },
+    "alternate_names": [
+      {
+        "given": "Ada",
+        "surname": "Doe",
+        "type": "married"
+      }
+    ],
     "birth_date": "1982",
     "death_date": "2026",
     "occupation": "Carpenter",
@@ -233,7 +240,7 @@ search might return this summary:
   "content": [
     {
       "type": "text",
-      "text": "Found 2 people matching surname \"Mayer\". Person \"Ada Mayer\" (I44) was born on 1982. Person \"Bruno Mayer\" (I48) has no recorded birth date."
+      "text": "Found 2 people matching search \"Mayer\". Person \"Ada Mayer\" (I44) was born on 1982. Person \"Bruno Schmidt\" (I48) has no recorded birth date. They worked as Mayer."
     }
   ],
   "structuredContent": {
@@ -241,11 +248,14 @@ search might return this summary:
       {
         "id": "I44",
         "name": {"given": "Ada", "surname": "Mayer"},
-        "birth_date": "1982"
+        "birth_date": "1982",
+        "match": {"direct_hit": true, "fields": ["name"]}
       },
       {
         "id": "I48",
-        "name": {"given": "Bruno", "surname": "Mayer"}
+        "name": {"given": "Bruno", "surname": "Schmidt"},
+        "occupation": "Mayer",
+        "match": {"direct_hit": false, "fields": ["gedcom_record"]}
       }
     ]
   }

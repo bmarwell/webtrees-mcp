@@ -67,11 +67,15 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if args.TreeID == "" || args.Surname == "" {
 			return framework.NewToolResultError("tree_id and surname are required"), nil
 		}
-		people, err := reader.SearchPersons(args.TreeID, args.Surname)
+		results, err := reader.SearchPersons(args.TreeID, args.Surname)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(peopleResult(people), peopleSummary(people, fmt.Sprintf("Found %d people matching surname %q.", len(people), args.Surname)))
+		people := make([]domain.Person, 0, len(results))
+		for _, result := range results {
+			people = append(people, result.Person)
+		}
+		return structuredResult(peopleResultFromOutputs(searchPersonOutputs(results)), peopleSummary(people, fmt.Sprintf("Found %d people matching search %q.", len(people), args.Surname)))
 	}
 }
 

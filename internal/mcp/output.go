@@ -5,22 +5,25 @@ import "webtrees-mcp/internal/domain"
 // These are transport DTOs. They deliberately own the MCP/JSON contract
 // instead of exposing domain or database representations to clients.
 type personResultDTO struct {
-	ID          string             `json:"id"`
-	Name        nameOutput         `json:"name"`
-	Sex         string             `json:"sex,omitempty"`
-	BirthDate   string             `json:"birth_date,omitempty"`
-	DeathDate   string             `json:"death_date,omitempty"`
-	Occupation  string             `json:"occupation,omitempty"`
-	Relatives   []relativeOutput   `json:"relatives,omitempty"`
-	FamilyLinks []familyLinkOutput `json:"family_links,omitempty"`
-	Events      []eventOutput      `json:"events,omitempty"`
-	Notes       []string           `json:"notes,omitempty"`
-	Sources     []sourceOutput     `json:"sources,omitempty"`
+	ID             string             `json:"id"`
+	Name           nameOutput         `json:"name"`
+	AlternateNames []nameOutput       `json:"alternate_names,omitempty"`
+	Sex            string             `json:"sex,omitempty"`
+	BirthDate      string             `json:"birth_date,omitempty"`
+	DeathDate      string             `json:"death_date,omitempty"`
+	Occupation     string             `json:"occupation,omitempty"`
+	Relatives      []relativeOutput   `json:"relatives,omitempty"`
+	FamilyLinks    []familyLinkOutput `json:"family_links,omitempty"`
+	Events         []eventOutput      `json:"events,omitempty"`
+	Notes          []string           `json:"notes,omitempty"`
+	Sources        []sourceOutput     `json:"sources,omitempty"`
+	Match          *searchMatchOutput `json:"match,omitempty"`
 }
 
 type nameOutput struct {
 	Given   string `json:"given,omitempty"`
 	Surname string `json:"surname,omitempty"`
+	Type    string `json:"type,omitempty"`
 }
 
 type relativeOutput struct {
@@ -53,6 +56,11 @@ type eventOutput struct {
 	Sources []sourceOutput `json:"sources,omitempty"`
 }
 
+type searchMatchOutput struct {
+	DirectHit bool     `json:"direct_hit"`
+	Fields    []string `json:"fields"`
+}
+
 type familyOutputDTO struct {
 	ID       string           `json:"family_id"`
 	Parents  []relativeOutput `json:"parents,omitempty"`
@@ -78,13 +86,39 @@ type treesResultDTO struct {
 
 func personResult(person domain.Person) personResultDTO {
 	return personResultDTO{
-		ID:   person.ID,
-		Name: nameOutput{Given: person.Name.Given, Surname: person.Name.Surname},
-		Sex:  person.Sex, BirthDate: person.BirthDate, DeathDate: person.DeathDate,
+		ID:             person.ID,
+		Name:           nameOutput{Given: person.Name.Given, Surname: person.Name.Surname},
+		AlternateNames: alternateNameOutputs(person.Names),
+		Sex:            person.Sex, BirthDate: person.BirthDate, DeathDate: person.DeathDate,
 		Occupation: person.Occupation, Relatives: relativeOutputs(person.Relatives),
 		FamilyLinks: familyLinkOutputs(person.FamilyLinks), Events: eventOutputs(person.Events),
 		Notes: person.Notes, Sources: sourceOutputs(person.Sources),
 	}
+}
+
+func alternateNameOutputs(names []domain.Name) []nameOutput {
+	if len(names) < 2 {
+		return nil
+	}
+	outputs := make([]nameOutput, 0, len(names)-1)
+	for _, name := range names[1:] {
+		outputs = append(outputs, nameOutput{Given: name.Given, Surname: name.Surname, Type: name.Type})
+	}
+	return outputs
+}
+
+func searchPersonResult(result domain.PersonSearchResult) personResultDTO {
+	output := personResult(result.Person)
+	output.Match = &searchMatchOutput{DirectHit: result.Match.DirectHit, Fields: result.Match.Fields}
+	return output
+}
+
+func searchPersonOutputs(results []domain.PersonSearchResult) []personResultDTO {
+	outputs := make([]personResultDTO, 0, len(results))
+	for _, result := range results {
+		outputs = append(outputs, searchPersonResult(result))
+	}
+	return outputs
 }
 
 func personOutputs(people []domain.Person) []personResultDTO {
@@ -97,6 +131,10 @@ func personOutputs(people []domain.Person) []personResultDTO {
 
 func peopleResult(people []domain.Person) peopleResultDTO {
 	return peopleResultDTO{People: personOutputs(people)}
+}
+
+func peopleResultFromOutputs(people []personResultDTO) peopleResultDTO {
+	return peopleResultDTO{People: people}
 }
 
 func relativeOutputs(relatives []domain.Relative) []relativeOutput {
