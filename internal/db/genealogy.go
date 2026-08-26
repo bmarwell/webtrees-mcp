@@ -165,44 +165,57 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 	return &person, nil
 }
 
-func (r *Reader) SearchPersons(treeID, surname string, includeIndirect bool, limit, offset int) ([]domain.PersonSearchResult, error) {
-	limit, offset = genealogy.NormalizePage(limit, offset)
-	pageEnd := offset + limit
-	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ? AND i_gedcom LIKE ? ORDER BY i_id", r.prefix)
-	rows, err := r.db.Query(query, treeID, "%"+surname+"%")
+func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domain.PersonSearchResult, error) {
+	limit, offset := genealogy.NormalizePage(criteria.Limit, criteria.Offset)
+	conditions := []string{"i.i_file = ?"}
+	args := []any{criteria.TreeID}
+	if criteria.Surname != "" {
+		conditions = append(conditions, "n.n_surname LIKE ?")
+		args = append(args, "%"+criteria.Surname+"%")
+	}
+	if criteria.GivenName != "" {
+		conditions = append(conditions, "n.n_givn LIKE ?")
+		args = append(args, "%"+criteria.GivenName+"%")
+	}
+	if criteria.Sex != "" {
+		conditions = append(conditions, "i.i_sex = ?")
+		args = append(args, criteria.Sex)
+	}
+	for _, filter := range []struct {
+		column string
+		value  *int
+	}{
+		{"i.i_birth_year >= ?", criteria.BirthYearMin},
+		{"i.i_birth_year <= ?", criteria.BirthYearMax},
+		{"i.i_death_year >= ?", criteria.DeathYearMin},
+		{"i.i_death_year <= ?", criteria.DeathYearMax},
+	} {
+		column, value := filter.column, filter.value
+		if value != nil {
+			conditions = append(conditions, column)
+			args = append(args, *value)
+		}
+	}
+	query := fmt.Sprintf("SELECT DISTINCT i.i_id, i.i_gedcom FROM %s_individuals i INNER JOIN %s_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE %s ORDER BY i.i_id LIMIT ? OFFSET ?", r.prefix, r.prefix, strings.Join(conditions, " AND "))
+	args = append(args, limit, offset)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	people := make([]domain.PersonSearchResult, 0, pageEnd)
+	people := make([]domain.PersonSearchResult, 0, limit)
 	for rows.Next() {
 		var id, raw string
 		if err := rows.Scan(&id, &raw); err != nil {
 			return nil, err
 		}
 		person := parseIndividualGEDCOM(id, raw)
-		result := domain.PersonSearchResult{Person: person, Match: searchMatch(person, surname)}
-		if !includeIndirect && !result.Match.DirectHit {
-			continue
-		}
-		people = append(people, result)
-		sort.Slice(people, func(i, j int) bool {
-			if people[i].Match.DirectHit != people[j].Match.DirectHit {
-				return people[i].Match.DirectHit
-			}
-			return people[i].Person.ID < people[j].Person.ID
-		})
-		if len(people) > pageEnd {
-			people = people[:pageEnd]
-		}
+		people = append(people, domain.PersonSearchResult{Person: person, Match: domain.SearchMatch{DirectHit: true, Fields: []string{"name"}}})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if offset >= len(people) {
-		return []domain.PersonSearchResult{}, nil
-	}
-	return people[offset:], nil
+	return people, nil
 }
 
 func searchMatch(person domain.Person, query string) domain.SearchMatch {

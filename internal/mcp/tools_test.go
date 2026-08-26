@@ -69,6 +69,11 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 			}
 		}
 	}
+	for _, argument := range []string{"given_name", "sex", "birth_year_min", "birth_year_max", "death_year_min", "death_year_max"} {
+		if _, ok := searchTool.Tool.InputSchema.Properties[argument]; !ok {
+			t.Errorf("search_persons lacks %s input metadata", argument)
+		}
+	}
 }
 
 func TestSearchPersonsRejectsInvalidInput(t *testing.T) {

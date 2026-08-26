@@ -21,11 +21,17 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need to find people from a surname or name fragment. Required: non-blank tree_id and surname. Optional: include_indirect (boolean, default false), limit (integer, default 10, range 1-100), and offset (integer, default 0, range 0-10000). Do not treat indirect record matches as verified identity. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic pagination. Chain selected person IDs into get_person for verified detail."),
+		framework.WithDescription("Use when you need to find people by indexed name, sex, or birth/death year bounds. Required: non-blank tree_id and surname. Optional: given_name, sex, birth_year_min, birth_year_max, death_year_min, death_year_max, limit (default 10, range 1-100), and offset (default 0, range 0-10000). Do not use this as a raw GEDCOM search; filters are applied to indexed fields and results are research leads until verified. Chain selected person IDs into get_person for full evidence."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
-		framework.WithBoolean("include_indirect", framework.DefaultBool(false), framework.Description("Include records where the query matches outside a name field")),
+		framework.WithString("given_name", framework.MinLength(1), framework.Description("Optional given-name fragment, matched against the indexed given-name field")),
+		framework.WithString("sex", framework.MinLength(1), framework.Description("Optional indexed sex value, for example F or M")),
+		framework.WithBoolean("include_indirect", framework.DefaultBool(false), framework.Description("Deprecated compatibility option; indexed searches do not scan indirect GEDCOM text")),
+		framework.WithInteger("birth_year_min", framework.Description("Optional inclusive minimum indexed birth year")),
+		framework.WithInteger("birth_year_max", framework.Description("Optional inclusive maximum indexed birth year")),
+		framework.WithInteger("death_year_min", framework.Description("Optional inclusive minimum indexed death year")),
+		framework.WithInteger("death_year_max", framework.Description("Optional inclusive maximum indexed death year")),
 		framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultPageSize), framework.Min(1), framework.Max(genealogy.MaxPageSize), framework.Description("Maximum people to return (1-100)")),
 		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
 	), searchPersonsHandler(reader))
@@ -159,7 +165,13 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		var args struct {
 			TreeID          string `json:"tree_id"`
 			Surname         string `json:"surname"`
+			GivenName       string `json:"given_name"`
+			Sex             string `json:"sex"`
 			IncludeIndirect bool   `json:"include_indirect"`
+			BirthYearMin    *int   `json:"birth_year_min"`
+			BirthYearMax    *int   `json:"birth_year_max"`
+			DeathYearMin    *int   `json:"death_year_min"`
+			DeathYearMax    *int   `json:"death_year_max"`
 			Limit           int    `json:"limit"`
 			Offset          int    `json:"offset"`
 		}
@@ -174,13 +186,26 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if args.Surname == "" {
 			return framework.NewToolResultError("surname must not be blank"), nil
 		}
+		args.GivenName = strings.TrimSpace(args.GivenName)
+		args.Sex = strings.TrimSpace(args.Sex)
 		if args.Limit < 0 || args.Limit > genealogy.MaxPageSize {
 			return framework.NewToolResultError(fmt.Sprintf("limit must be between 1 and %d (or omitted)", genealogy.MaxPageSize)), nil
 		}
 		if args.Offset < 0 || args.Offset > genealogy.MaxPageOffset {
 			return framework.NewToolResultError(fmt.Sprintf("offset must be between 0 and %d", genealogy.MaxPageOffset)), nil
 		}
-		results, err := reader.SearchPersons(args.TreeID, args.Surname, args.IncludeIndirect, args.Limit, args.Offset)
+		if args.BirthYearMin != nil && args.BirthYearMax != nil && *args.BirthYearMin > *args.BirthYearMax {
+			return framework.NewToolResultError("birth_year_min must not be greater than birth_year_max"), nil
+		}
+		if args.DeathYearMin != nil && args.DeathYearMax != nil && *args.DeathYearMin > *args.DeathYearMax {
+			return framework.NewToolResultError("death_year_min must not be greater than death_year_max"), nil
+		}
+		results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
+			TreeID: args.TreeID, Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex,
+			BirthYearMin: args.BirthYearMin, BirthYearMax: args.BirthYearMax,
+			DeathYearMin: args.DeathYearMin, DeathYearMax: args.DeathYearMax,
+			IncludeIndirect: args.IncludeIndirect, Limit: args.Limit, Offset: args.Offset,
+		})
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}

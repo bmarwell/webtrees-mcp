@@ -6,12 +6,28 @@ import "webtrees-mcp/internal/domain"
 // SQL, fixtures, or another data source without leaking their representations.
 type Repository interface {
 	GetPerson(treeID, personID string) (*domain.Person, error)
-	SearchPersons(treeID, surname string, includeIndirect bool, limit, offset int) ([]domain.PersonSearchResult, error)
+	SearchPersons(criteria PersonSearchCriteria) ([]domain.PersonSearchResult, error)
 	GetFamily(treeID, familyID string) (*domain.Family, error)
 	SearchEvents(treeID, eventType, fromDate, toDate, place string, limit, offset int) ([]domain.EventSearchResult, error)
 	ListTrees(limit, offset int) ([]domain.Tree, error)
 	ListRecentlyBorn(treeID string, limit, offset int) ([]domain.Person, error)
 	ListRecentlyDeceased(treeID string, limit, offset int) ([]domain.Person, error)
+}
+
+// PersonSearchCriteria contains only indexed candidate filters. Nil year
+// bounds mean that the corresponding bound is not applied.
+type PersonSearchCriteria struct {
+	TreeID          string
+	Surname         string
+	GivenName       string
+	Sex             string
+	BirthYearMin    *int
+	BirthYearMax    *int
+	DeathYearMin    *int
+	DeathYearMax    *int
+	IncludeIndirect bool
+	Limit           int
+	Offset          int
 }
 
 const (
