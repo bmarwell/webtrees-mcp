@@ -46,6 +46,15 @@ Preserve missing, uncertain, and partial facts explicitly. Never turn a
 probable death, inferred relationship, or ranking based on incomplete dates
 into an established fact.
 
+When adding an endpoint or tool, publish its output contract in all three
+places: define a transport-owned DTO with JSON tags in `internal/mcp/output.go`,
+register the matching `WithOutputSchema[...]()` in `internal/mcp/tools.go`, and
+document the shape with a representative example in `README.adoc`. Keep
+collection results inside a named object, keep field names stable, and add a
+test that checks both the generated schema and the structured result shape.
+The human-readable `content` summary should explain the result without
+duplicating its JSON.
+
 ## Research tool hints
 
 When adding or changing a research tool, keep the human-readable result short:
