@@ -131,6 +131,12 @@ fields such as names, identifiers, dates, occupations, relationships, and
 family links; unavailable details such as event places or marriage dates are
 not invented.
 
+Successful tool results always include a JSON-object `structuredContent` value.
+Collection results are wrapped in named fields such as `people` or `trees`
+instead of returning a top-level array, which improves compatibility with
+strict MCP clients. Error results contain diagnostic `content` and do not
+claim to have successful structured data.
+
 [source,json]
 ----
 {
@@ -220,17 +226,19 @@ search might return this summary:
       "text": "Found 2 people matching surname \"Mayer\". Person \"Ada Mayer\" (I44) was born on 1982. Person \"Bruno Mayer\" (I48) has no recorded birth date."
     }
   ],
-  "structuredContent": [
-    {
-      "id": "I44",
-      "name": {"given": "Ada", "surname": "Mayer"},
-      "birth_date": "1982"
-    },
-    {
-      "id": "I48",
-      "name": {"given": "Bruno", "surname": "Mayer"}
-    }
-  ]
+  "structuredContent": {
+    "people": [
+      {
+        "id": "I44",
+        "name": {"given": "Ada", "surname": "Mayer"},
+        "birth_date": "1982"
+      },
+      {
+        "id": "I48",
+        "name": {"given": "Bruno", "surname": "Mayer"}
+      }
+    ]
+  }
 }
 ----
 

@@ -44,6 +44,25 @@ func TestPersonResultMapsDomainToTransportDTO(t *testing.T) {
 	}
 }
 
+func TestCollectionResultsUseObjectShapes(t *testing.T) {
+	people := peopleResult([]domain.Person{{ID: "I44"}})
+	if len(people.People) != 1 || people.People[0].ID != "I44" {
+		t.Fatalf("unexpected people result: %+v", people)
+	}
+	trees := treesResult([]domain.Tree{{ID: "tree-1"}})
+	if len(trees.Trees) != 1 || trees.Trees[0].ID != "tree-1" {
+		t.Fatalf("unexpected trees result: %+v", trees)
+	}
+
+	result, err := structuredResult(people, "Found 1 person.")
+	if err != nil {
+		t.Fatalf("structuredResult returned an error: %v", err)
+	}
+	if _, ok := result.StructuredContent.(peopleResultDTO); !ok {
+		t.Fatalf("collection structured content should be an object, got %T", result.StructuredContent)
+	}
+}
+
 func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 	tests := []struct {
 		name   string

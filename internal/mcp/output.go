@@ -37,6 +37,14 @@ type treeOutput struct {
 	Title string `json:"title,omitempty"`
 }
 
+type peopleResultDTO struct {
+	People []personResultDTO `json:"people"`
+}
+
+type treesResultDTO struct {
+	Trees []treeOutput `json:"trees"`
+}
+
 func personResult(person domain.Person) personResultDTO {
 	return personResultDTO{
 		ID:   person.ID,
@@ -52,6 +60,10 @@ func personOutputs(people []domain.Person) []personResultDTO {
 		outputs = append(outputs, personResult(person))
 	}
 	return outputs
+}
+
+func peopleResult(people []domain.Person) peopleResultDTO {
+	return peopleResultDTO{People: personOutputs(people)}
 }
 
 func relativeOutputs(relatives []domain.Relative) []relativeOutput {
@@ -76,4 +88,8 @@ func treeOutputs(trees []domain.Tree) []treeOutput {
 		outputs = append(outputs, treeOutput{ID: tree.ID, Name: tree.Name, Title: tree.Title})
 	}
 	return outputs
+}
+
+func treesResult(trees []domain.Tree) treesResultDTO {
+	return treesResultDTO{Trees: treeOutputs(trees)}
 }
