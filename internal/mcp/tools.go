@@ -213,7 +213,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		for _, result := range results {
 			people = append(people, result.Person)
 		}
-		return structuredResult(peopleResultFromOutputs(searchPersonOutputs(results)), peopleSummary(people, fmt.Sprintf("Found %d people matching search %q.", len(people), args.Surname)))
+		return structuredResult(peopleResultFromOutputs(searchPersonOutputs(results)), searchPeopleSummary(results, fmt.Sprintf("Found %d people matching search %q.", len(people), args.Surname)))
 	}
 }
 
@@ -475,6 +475,25 @@ func peopleSummary(people []domain.Person, prefix string) string {
 		summaries = append(summaries, personSummary(person))
 	}
 	return prefix + "\n\n" + strings.Join(summaries, "\n\n")
+}
+
+func searchPeopleSummary(results []domain.PersonSearchResult, prefix string) string {
+	if len(results) == 0 {
+		return prefix
+	}
+	blocks := make([]string, 0, len(results))
+	for _, result := range results {
+		match := "indirect record match"
+		if result.Match.DirectHit {
+			match = "direct indexed name match"
+		}
+		block := "Result type: research lead\nMatch: " + match
+		if len(result.Match.Fields) > 0 {
+			block += "\nMatched fields: " + strings.Join(result.Match.Fields, ", ")
+		}
+		blocks = append(blocks, block+"\n"+personSummary(result.Person))
+	}
+	return prefix + "\n\n" + strings.Join(blocks, "\n\n")
 }
 
 func familySummary(family domain.Family) string {

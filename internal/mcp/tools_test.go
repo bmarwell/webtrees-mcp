@@ -151,6 +151,16 @@ func TestSearchPersonResultIncludesMatchMetadata(t *testing.T) {
 	}
 }
 
+func TestSearchPeopleSummaryMarksLeadsAndMatchType(t *testing.T) {
+	got := searchPeopleSummary([]domain.PersonSearchResult{{
+		Person: domain.Person{ID: "I7", Name: domain.Name{Given: "Casey", Surname: "Example"}},
+		Match:  domain.SearchMatch{DirectHit: true, Fields: []string{"name"}},
+	}}, "Found 1 person.")
+	if !strings.Contains(got, "Result type: research lead") || !strings.Contains(got, "Match: direct indexed name match") || !strings.Contains(got, "Matched fields: name") {
+		t.Errorf("search summary lacks lead metadata: %q", got)
+	}
+}
+
 func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 	tests := []struct {
 		name   string
