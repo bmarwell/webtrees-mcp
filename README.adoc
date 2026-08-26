@@ -156,6 +156,23 @@ output schema. Collection results are wrapped in `people` or `trees`. Error
 results use diagnostic `content` and should not be treated as successful
 structured data. Missing or uncertain facts must be reported as such.
 
+=== Published output schemas
+
+The server publishes these schemas through `tools/list` and returns the same
+object shapes in `structuredContent`:
+
+* `get_person`: an object with `id`, `name`, and optional dates, alternate names,
+  events, family links, relatives, notes, sources, and search-match metadata.
+* `search_persons`, `list_recently_born`, and `list_recently_deceased`:
+  `{ "people": [person] }`.
+* `get_family`: an object with `family_id` and optional `parents`, `children`,
+  `events`, `notes`, and `sources`.
+* `list_tree_ids`: `{ "trees": [{"tree_id", "name", "title"}] }`.
+
+IDs are stable within a tree. Collection results are named objects rather than
+top-level arrays, so clients can validate them against the published schemas
+and chain returned IDs into detail tools.
+
 It returns JSON in this shape:
 
 Tool results carry the native payload in `structuredContent` and a concise,

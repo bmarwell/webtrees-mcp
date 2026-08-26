@@ -39,8 +39,10 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)
 		}
-		if !strings.Contains(tool.Tool.Description, "Use when") {
-			t.Errorf("tool %q lacks selection guidance: %q", name, tool.Tool.Description)
+		for _, phrase := range []string{"Use when", "Do not", "chain"} {
+			if !strings.Contains(strings.ToLower(tool.Tool.Description), strings.ToLower(phrase)) {
+				t.Errorf("tool %q lacks %q selection guidance: %q", name, phrase, tool.Tool.Description)
+			}
 		}
 		if tool.Tool.OutputSchema.Type != "object" {
 			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)

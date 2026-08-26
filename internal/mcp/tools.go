@@ -21,7 +21,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need to find people from a surname or name fragment. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic limit/offset pagination. Set include_indirect to true only when investigating broad record matches. Chain selected person IDs into get_person for verified detail."),
+		framework.WithDescription("Use when you need to find people from a surname or name fragment. Do not treat indirect record matches as verified identity. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic limit/offset pagination. Set include_indirect to true only when investigating broad record matches. Chain selected person IDs into get_person for verified detail."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.Description("Surname or part of a surname")),
@@ -36,7 +36,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
-		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Results are ordered by tree ID and paged with limit and offset. Pass the selected tree_id to every subsequent genealogy query."),
+		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Do not use after the tree is selected. Results are ordered by tree ID and paged with limit and offset. Chain the selected tree_id into every subsequent genealogy query."),
 		framework.WithOutputSchema[treesResultDTO](),
 		framework.WithInteger("limit", framework.Description("Maximum number of trees; defaults to 10 and is capped at 100")),
 		framework.WithInteger("offset", framework.Description("Number of trees to skip; defaults to 0"))), listTreesHandler(reader))
@@ -45,10 +45,10 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		desc string
 		fn   func(genealogy.Repository, string, int, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "Use when looking for the latest recorded births in a tree. Results are ordered by parsed birth year and person ID, and paged with limit and offset; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_born", "Use when looking for recorded births in a tree. Do not treat the ranking as proof of the historically latest event. Results are ordered by parsed birth year and person ID, and paged with limit and offset; chain returned person IDs into get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyBorn(treeID, limit, offset)
 		}},
-		{"list_recently_deceased", "Use when looking for the latest recorded deaths in a tree. Results are ordered by parsed death year and person ID, and paged with limit and offset; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_deceased", "Use when looking for recorded deaths in a tree. Do not treat the ranking as proof of the historically latest event. Results are ordered by parsed death year and person ID, and paged with limit and offset; chain returned person IDs into get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyDeceased(treeID, limit, offset)
 		}},
 	} {
