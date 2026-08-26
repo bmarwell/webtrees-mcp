@@ -102,3 +102,12 @@ excluded counts, confidence, and date policy before presenting conclusions.
 
 Run `gofmt`, `go test ./...`, `go vet ./...`, and `git diff --check` before
 committing.
+
+## Commits
+
+Keep each commit focused and use a concise imperative subject. For issue work,
+use the repository convention `[#123] Add ...; fixes #123` (or `refs #123` when
+the change does not fully resolve the issue). For work without an issue, use a
+semantic-style subject such as `fix(mcp): reject invalid pagination`. Keep
+documentation-only or agent-guidance changes in their own commit when they are
+separate from a code change.
