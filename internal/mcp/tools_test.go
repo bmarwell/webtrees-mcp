@@ -239,6 +239,23 @@ func TestFamilyAndTreeSummariesHandleOptionalData(t *testing.T) {
 	}
 }
 
+func TestTextSummariesUseExplicitBlocksForCollections(t *testing.T) {
+	people := peopleSummary([]domain.Person{{ID: "I1", Name: domain.Name{Given: "Casey"}}, {ID: "I2"}}, "Found 2 people.")
+	if !strings.Contains(people, "Found 2 people.\n\nPerson ID: I1") || !strings.Contains(people, "\n\nPerson ID: I2") {
+		t.Errorf("people summary is not block-oriented: %q", people)
+	}
+
+	events := eventSearchSummary([]domain.EventSearchResult{{PersonID: "I1", Type: "birt", Date: "1900", Place: "Exampletown"}})
+	if events != "Events: 1\n- Person: I1; Type: BIRT; Date: 1900; Place: Exampletown" {
+		t.Errorf("event search summary = %q", events)
+	}
+
+	path := relationshipPathSummary("I1", "I2", true, []domain.RelationshipPathStep{{FromPersonID: "I1", ToPersonID: "I2", FamilyID: "F1", Relationship: "parent"}})
+	if path != "Relationship path: I1 -> I2\nHops: 1\n- I1 -> I2 via F1 (parent)" {
+		t.Errorf("relationship summary = %q", path)
+	}
+}
+
 func TestJoinPhrasesUsesReadableConjunctions(t *testing.T) {
 	tests := []struct {
 		phrases []string
