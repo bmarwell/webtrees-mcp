@@ -98,6 +98,17 @@ type relationshipPathResultDTO struct {
 	Path         []relationshipPathStepOutput `json:"path"`
 }
 
+type eventSearchResultDTO struct {
+	PersonID string `json:"person_id"`
+	Type     string `json:"type"`
+	Date     string `json:"date"`
+	Place    string `json:"place,omitempty"`
+}
+
+type eventSearchResultsDTO struct {
+	Events []eventSearchResultDTO `json:"events"`
+}
+
 func personResult(person domain.Person) personResultDTO {
 	return personResultDTO{
 		ID:             person.ID,
@@ -217,4 +228,12 @@ func relationshipPathResult(fromID, toID string, found bool, path []domain.Relat
 		steps = append(steps, relationshipPathStepOutput{FromPersonID: step.FromPersonID, ToPersonID: step.ToPersonID, FamilyID: step.FamilyID, Relationship: step.Relationship})
 	}
 	return relationshipPathResultDTO{FromPersonID: fromID, ToPersonID: toID, Found: found, Path: steps}
+}
+
+func eventSearchResults(events []domain.EventSearchResult) eventSearchResultsDTO {
+	outputs := make([]eventSearchResultDTO, 0, len(events))
+	for _, event := range events {
+		outputs = append(outputs, eventSearchResultDTO{PersonID: event.PersonID, Type: event.Type, Date: event.Date, Place: event.Place})
+	}
+	return eventSearchResultsDTO{Events: outputs}
 }

@@ -8,6 +8,7 @@ type Repository interface {
 	GetPerson(treeID, personID string) (*domain.Person, error)
 	SearchPersons(treeID, surname string, includeIndirect bool, limit, offset int) ([]domain.PersonSearchResult, error)
 	GetFamily(treeID, familyID string) (*domain.Family, error)
+	SearchEvents(treeID, eventType, fromDate, toDate, place string, limit, offset int) ([]domain.EventSearchResult, error)
 	ListTrees(limit, offset int) ([]domain.Tree, error)
 	ListRecentlyBorn(treeID string, limit, offset int) ([]domain.Person, error)
 	ListRecentlyDeceased(treeID string, limit, offset int) ([]domain.Person, error)

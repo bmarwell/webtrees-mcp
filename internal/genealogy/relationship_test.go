@@ -23,6 +23,10 @@ func (r relationshipRepository) GetFamily(_ string, id string) (*domain.Family, 
 	return r.families[id], nil
 }
 
+func (r relationshipRepository) SearchEvents(string, string, string, string, string, int, int) ([]domain.EventSearchResult, error) {
+	return nil, nil
+}
+
 func (r relationshipRepository) ListTrees(int, int) ([]domain.Tree, error) { return nil, nil }
 
 func (r relationshipRepository) ListRecentlyBorn(string, int, int) ([]domain.Person, error) {

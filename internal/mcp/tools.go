@@ -42,6 +42,17 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
 		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
 	), relationshipPathHandler(reader))
+	s.AddTool(framework.NewTool("search_events",
+		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date, and use the preferred YYYY-MM-DD format when possible. Results are bounded and paged; chain returned person_id values into get_person for full evidence."),
+		framework.WithOutputSchema[eventSearchResultsDTO](),
+		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithString("event_type", framework.Description("GEDCOM event type, for example BIRT, DEAT, or MARR")),
+		framework.WithString("from_date", framework.Description("Inclusive lower date; preferred YYYY-MM-DD, also YYYY, YYYY-MM, or common GEDCOM/text dates")),
+		framework.WithString("to_date", framework.Description("Inclusive upper date; preferred YYYY-MM-DD, also YYYY, YYYY-MM, or common GEDCOM/text dates")),
+		framework.WithString("place", framework.Description("Case-insensitive place substring")),
+		framework.WithInteger("limit", framework.Description("Maximum events; defaults to 10 and is capped at 100")),
+		framework.WithInteger("offset", framework.Description("Number of matching events to skip; defaults to 0")),
+	), searchEventsHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
 		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Do not use after the tree is selected. Results are ordered by tree ID and paged with limit and offset. Chain the selected tree_id into every subsequent genealogy query."),
 		framework.WithOutputSchema[treesResultDTO](),
@@ -65,6 +76,34 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 			framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
 			framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
 		), listPeopleHandler(reader, spec.fn))
+	}
+}
+
+func searchEventsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
+	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
+		var args struct {
+			TreeID    string `json:"tree_id"`
+			EventType string `json:"event_type"`
+			FromDate  string `json:"from_date"`
+			ToDate    string `json:"to_date"`
+			Place     string `json:"place"`
+			Limit     int    `json:"limit"`
+			Offset    int    `json:"offset"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		if args.TreeID == "" {
+			return framework.NewToolResultError("tree_id is required"), nil
+		}
+		if args.Offset < 0 {
+			return framework.NewToolResultError("offset must not be negative"), nil
+		}
+		events, err := reader.SearchEvents(args.TreeID, args.EventType, args.FromDate, args.ToDate, args.Place, args.Limit, args.Offset)
+		if err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		return structuredResult(eventSearchResults(events), fmt.Sprintf("Found %d matching events.", len(events)))
 	}
 }
 

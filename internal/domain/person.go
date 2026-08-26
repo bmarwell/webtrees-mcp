@@ -89,3 +89,11 @@ type RelationshipPathStep struct {
 	FamilyID     string
 	Relationship string
 }
+
+// EventSearchResult is an event matched through the webtrees date index.
+type EventSearchResult struct {
+	PersonID string
+	Type     string
+	Date     string
+	Place    string
+}

@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -36,7 +36,15 @@ The webtrees table prefix defaults to `wt`. The dump used during development con
 
 `i_file` and `f_file` refer to `wt_gedcom.gedcom_id`. Individual and family details are stored primarily as GEDCOM text, while `wt_dates`, `wt_name`, and `wt_link` provide useful indexes for future tools. Queries must always constrain records by the tree ID because xrefs such as `I1` and `F1` are only unique within a tree.
 
-Useful future read-only tools include family/relative expansion from `wt_families`, ancestor and descendant traversal through `FAMC`/`FAMS` and `f_husb`/`f_wife`/`f_gedcom`, date-range searches via `wt_dates`, name searches via `wt_name`, and evidence lookup through `wt_sources`.
+The `search_events` tool uses `wt_dates` for indexed individual-event filtering.
+It accepts an optional `event_type` such as `BIRT` or `DEAT`, inclusive
+`from_date` and `to_date`, a case-insensitive place substring, and bounded
+`limit`/`offset` pagination. Results include the matching person ID, event
+type, source date text, and place; use `get_person` to inspect full event
+evidence. Family events and event places not represented by the date index are
+not returned by this tool.
+
+Useful future read-only tools include family/relative expansion from `wt_families`, ancestor and descendant traversal through `FAMC`/`FAMS` and `f_husb`/`f_wife`/`f_gedcom`, name searches via `wt_name`, and evidence lookup through `wt_sources`.
 
 == Requirements
 
@@ -141,6 +149,13 @@ It follows explicit family links for a bounded shortest-path search and returns
 each hop with its `family_id` evidence and relationship kind. A missing path is
 reported with `found: false`; surnames and inferred relationships are not used.
 
+`search_events` prefers ISO dates such as `1815-12-10`. It also accepts a year
+(`1815`), year and month (`1815-12`), slash-separated variants, common textual
+dates such as `10 DEC 1815`, and GEDCOM qualifiers such as `ABT` and `BET`.
+Date ranges are inclusive; an omitted boundary is unbounded. Year-only index
+entries remain year-precision results, and place matching is a case-insensitive
+substring match rather than an exact normalized-place query.
+
 `list_tree_ids` accepts optional `limit` and `offset` arguments. The born and deceased listing tools accept a `tree_id`, `limit`, and `offset`. Limits default to `10` and are capped at `100`; offsets default to `0`. Tree IDs are ordered ascending, while recent-person lists are ordered by event year descending and person ID ascending as a deterministic tie-breaker. Request the next page by increasing `offset` by the previous `limit`. All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
 
 === Choosing and chaining tools
@@ -170,6 +185,7 @@ object shapes in `structuredContent`:
   events, family links, relatives, notes, sources, and search-match metadata.
 * `search_persons`, `list_recently_born`, and `list_recently_deceased`:
   `{ "people": [person] }`.
+* `search_events`: `{ "events": [{"person_id", "type", "date", "place"}] }`.
 * `get_family`: an object with `family_id` and optional `parents`, `children`,
   `events`, `notes`, and `sources`.
 * `list_tree_ids`: `{ "trees": [{"tree_id", "name", "title"}] }`.
