@@ -119,7 +119,12 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 }
 ----
 
-`search_persons` accepts `tree_id` and `surname`, and returns matching person summaries. `get_family` accepts `tree_id` and `family_id`, returning parent and child links without embedding duplicate person objects.
+`search_persons` accepts `tree_id` and `surname`, and returns direct name
+matches by default. Set `include_indirect` to `true` to include records where
+the query occurs elsewhere in the GEDCOM record; those results are marked with
+`match.direct_hit: false` and should normally be deprioritized by an agent.
+`get_family` accepts `tree_id` and `family_id`, returning parent and child links
+without embedding duplicate person objects.
 
 `list_tree_ids` takes no arguments. The born and deceased listing tools accept a `tree_id` and optional `limit` (default `10`). All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
 
@@ -232,7 +237,7 @@ details that are not part of the returned family data:
 ----
 
 List and search tools use the same pattern. For example, a fictional surname
-search might return this summary:
+search with `include_indirect: true` might return this summary:
 
 [source,json]
 ----

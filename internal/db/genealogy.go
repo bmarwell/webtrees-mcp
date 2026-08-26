@@ -20,7 +20,7 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 	return &person, nil
 }
 
-func (r *Reader) SearchPersons(treeID, surname string) ([]domain.PersonSearchResult, error) {
+func (r *Reader) SearchPersons(treeID, surname string, includeIndirect bool) ([]domain.PersonSearchResult, error) {
 	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ? AND i_gedcom LIKE ? ORDER BY i_id", r.prefix)
 	rows, err := r.db.Query(query, treeID, "%"+surname+"%")
 	if err != nil {
@@ -34,7 +34,11 @@ func (r *Reader) SearchPersons(treeID, surname string) ([]domain.PersonSearchRes
 			return nil, err
 		}
 		person := parseIndividualGEDCOM(id, raw)
-		people = append(people, domain.PersonSearchResult{Person: person, Match: searchMatch(person, surname)})
+		result := domain.PersonSearchResult{Person: person, Match: searchMatch(person, surname)}
+		if !includeIndirect && !result.Match.DirectHit {
+			continue
+		}
+		people = append(people, result)
 	}
 	return people, rows.Err()
 }

@@ -25,6 +25,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.Description("Surname or part of a surname")),
+		framework.WithBoolean("include_indirect", framework.Description("Include records where the query matches outside a name field")),
 	), searchPersonsHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
 		framework.WithDescription("Retrieve the parent and child links for one family."),
@@ -58,8 +59,9 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID  string `json:"tree_id"`
-			Surname string `json:"surname"`
+			TreeID          string `json:"tree_id"`
+			Surname         string `json:"surname"`
+			IncludeIndirect bool   `json:"include_indirect"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
@@ -67,7 +69,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if args.TreeID == "" || args.Surname == "" {
 			return framework.NewToolResultError("tree_id and surname are required"), nil
 		}
-		results, err := reader.SearchPersons(args.TreeID, args.Surname)
+		results, err := reader.SearchPersons(args.TreeID, args.Surname, args.IncludeIndirect)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
