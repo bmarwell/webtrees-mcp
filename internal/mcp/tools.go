@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -14,15 +15,15 @@ import (
 )
 
 func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
-	tool := framework.NewTool("get_person",
-		framework.WithDescription("Use when you have an exact person_id and need verified person details. Do not use for name searches or unverified identity; call search_persons first. Chain the returned person_id here. Read content as the complete factual result; do not infer omitted facts."),
+	tool := framework.NewTool("get_person_by_exact_id",
+		framework.WithDescription("Use when you already have an exact GEDCOM person_id such as I123 and need verified details. Do not pass a person's name here and do not use for name searches; call search_person_by_name first. Chain the returned person_id here. Read content as the complete factual result; do not infer omitted facts."),
 		framework.WithOutputSchema[personResultDTO](),
 		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42; do not pass a tree name or the literal default")),
-		framework.WithString("person_id", framework.Required(), framework.Description("Individual xref, for example I1")),
+		framework.WithString("person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name; search by name first.")),
 	)
-	s.AddTool(tool, getPersonHandler(reader))
-	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person. Read content as the factual lead record."),
+	s.AddTool(tool, getPersonByExactIDHandler(reader))
+	s.AddTool(framework.NewTool("search_person_by_name",
+		framework.WithDescription("Use when you have a person's name and need a research lead. Required: tree_id and surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not pass a name to get_person_by_exact_id or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person_by_exact_id. Read content as the factual lead record."),
 		framework.WithOutputSchema[searchPeopleResultDTO](),
 		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42; do not pass a tree name or the literal default")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
@@ -36,39 +37,39 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithInteger("death_year_max", framework.Description("Optional inclusive maximum indexed death year")),
 		framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultPageSize), framework.Min(1), framework.Max(genealogy.MaxPageSize), framework.Description("Maximum people to return (1-100)")),
 		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
-	), searchPersonsHandler(reader))
+	), searchPersonByNameHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
-		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not infer relationships from surnames or missing links. Chain returned person_id values into get_person."),
+		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not infer relationships from surnames or missing links. Chain returned person_id values into get_person_by_exact_id."),
 		framework.WithOutputSchema[familyOutputDTO](),
 		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("relationship_path",
-		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person or get_family."),
+		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person_by_exact_id or get_family."),
 		framework.WithOutputSchema[relationshipPathResultDTO](),
 		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
-		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
-		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
+		framework.WithString("from_person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name.")),
+		framework.WithString("to_person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I456. Do not pass a person's name.")),
 	), relationshipPathHandler(reader))
 	lineageTools := []struct {
 		name        string
 		direction   string
 		description string
 	}{
-		{"get_ancestors", "ancestors", "Use when you need the direct ancestor line for a known person. Do not infer ancestors from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person and get_family."},
-		{"get_descendants", "descendants", "Use when you need the direct descendant line for a known person. Do not infer descendants from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person and get_family."},
+		{"get_ancestors", "ancestors", "Use when you need the direct ancestor line for a known person. Do not infer ancestors from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person_by_exact_id and get_family."},
+		{"get_descendants", "descendants", "Use when you need the direct descendant line for a known person. Do not infer descendants from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person_by_exact_id and get_family."},
 	}
 	for _, spec := range lineageTools {
 		s.AddTool(framework.NewTool(spec.name,
 			framework.WithDescription(spec.description), framework.WithOutputSchema[lineageResultDTO](),
 			framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
-			framework.WithString("person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
+			framework.WithString("person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name; search by name first.")),
 			framework.WithInteger("max_depth", framework.DefaultNumber(genealogy.DefaultLineageDepth), framework.Min(1), framework.Max(genealogy.MaxLineageDepth), framework.Description("Maximum number of generations to traverse")),
 			framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultLineageLimit), framework.Min(1), framework.Max(genealogy.MaxLineageLimit), framework.Description("Maximum people to return")),
 		), lineageHandler(reader, spec.direction))
 	}
 	s.AddTool(framework.NewTool("search_events",
-		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person for full evidence."),
+		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person_by_exact_id for full evidence."),
 		framework.WithOutputSchema[eventSearchResultsDTO](),
 		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 		framework.WithString("event_type", framework.Description("GEDCOM event type, for example BIRT, DEAT, or MARR")),
@@ -88,10 +89,10 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		desc string
 		fn   func(genealogy.Repository, string, int, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "Use when looking for recorded births in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed birth year and person ID. Chain returned person IDs into get_person for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_born", "Use when looking for recorded births in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed birth year and person ID. Chain returned person IDs into get_person_by_exact_id for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyBorn(treeID, limit, offset)
 		}},
-		{"list_recently_deceased", "Use when looking for recorded deaths in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed death year and person ID. Chain returned person IDs into get_person for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+		{"list_recently_deceased", "Use when looking for recorded deaths in a tree. Do not treat ranking as proof of the historically latest event; results are research leads ordered by parsed death year and person ID. Chain returned person IDs into get_person_by_exact_id for evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
 			return r.ListRecentlyDeceased(treeID, limit, offset)
 		}},
 	} {
@@ -142,7 +143,7 @@ func relationshipPathHandler(reader genealogy.Repository) server.ToolHandlerFunc
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID < 1 || args.FromPersonID == "" || args.ToPersonID == "" {
+		if args.TreeID < 1 || !validPersonID(args.FromPersonID) || !validPersonID(args.ToPersonID) {
 			return framework.NewToolResultError("tree_id must be a positive numeric ID; from_person_id and to_person_id are required"), nil
 		}
 		path, found, err := genealogy.FindRelationshipPath(reader, strconv.Itoa(args.TreeID), args.FromPersonID, args.ToPersonID)
@@ -175,7 +176,7 @@ func lineageHandler(reader genealogy.Repository, direction string) server.ToolHa
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID < 1 || strings.TrimSpace(args.PersonID) == "" {
+		if args.TreeID < 1 || !validPersonID(args.PersonID) {
 			return framework.NewToolResultError("tree_id must be a positive numeric ID and person_id is required"), nil
 		}
 		if args.MaxDepth < 0 || args.MaxDepth > genealogy.MaxLineageDepth || args.Limit < 0 || args.Limit > genealogy.MaxLineageLimit {
@@ -223,7 +224,7 @@ func eventSearchSummary(events []domain.EventSearchResult) string {
 	return strings.Join(lines, "\n")
 }
 
-func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
+func searchPersonByNameHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID          int    `json:"tree_id"`
@@ -352,7 +353,7 @@ func structuredResult(value any, summary string) (*framework.CallToolResult, err
 	return framework.NewToolResultStructured(value, summary), nil
 }
 
-func getPersonHandler(reader genealogy.Repository) server.ToolHandlerFunc {
+func getPersonByExactIDHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(ctx context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID   int    `json:"tree_id"`
@@ -361,7 +362,7 @@ func getPersonHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID < 1 || args.PersonID == "" {
+		if args.TreeID < 1 || !validPersonID(args.PersonID) {
 			return framework.NewToolResultError("tree_id must be a positive numeric ID and person_id is required"), nil
 		}
 		person, err := reader.GetPerson(strconv.Itoa(args.TreeID), args.PersonID)
@@ -370,6 +371,12 @@ func getPersonHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		}
 		return structuredResult(personResult(*person), personSummary(*person))
 	}
+}
+
+var gedcomPersonIDPattern = regexp.MustCompile(`^I[0-9]+$`)
+
+func validPersonID(value string) bool {
+	return gedcomPersonIDPattern.MatchString(strings.TrimSpace(value))
 }
 
 func personSummary(person domain.Person) string {

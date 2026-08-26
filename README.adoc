@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person_by_exact_id`, `search_person_by_name`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -40,7 +40,7 @@ The `search_events` tool uses `wt_dates` for indexed individual-event filtering.
 It accepts an optional `event_type` such as `BIRT` or `DEAT`, inclusive
 `from_date` and `to_date`, a case-insensitive place substring, and bounded
 `limit`/`offset` pagination. Results include the matching person ID, event
-type, source date text, and place; use `get_person` to inspect full event
+type, source date text, and place; use `get_person_by_exact_id` to inspect full event
 evidence. Family events and event places not represented by the date index are
 not returned by this tool.
 
@@ -125,7 +125,7 @@ To enumerate the registered tools, call `tools/list` after `initialize` with an 
 
 The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initialize`; they are not needed for `tools/list`. If a response contains `nextCursor`, send that exact opaque value in a later `tools/list` request. Do not send a placeholder such as `optional-cursor-value`: the server expects a framework-generated base64 cursor and will reject an invalid value.
 
-`get_person` accepts:
+`get_person_by_exact_id` accepts an exact GEDCOM individual ID; it never accepts a human name:
 
 [source,json]
 ----
@@ -135,7 +135,7 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 }
 ----
 
-`search_persons` requires a positive numeric `tree_id` and a non-blank string
+`search_person_by_name` requires a positive numeric `tree_id` and a non-blank string
 `surname`.
 It also accepts optional indexed `given_name` and `sex` fragments, inclusive
 `birth_year_min`, `birth_year_max`, `death_year_min`, and `death_year_max`
@@ -148,7 +148,7 @@ bounded candidate set. Surrounding whitespace is ignored. Optional pagination us
 allowed range `0`-`10000`). Invalid values and reversed year bounds are
 rejected. Candidate selection is performed by `wt_name` and indexed individual
 fields; it does not scan raw GEDCOM records. Returned IDs are research leads;
-chain them into `get_person` for verification. The deprecated
+chain them into `get_person_by_exact_id` for verification. The deprecated
 `include_indirect` option is accepted for compatibility but cannot enable raw
 GEDCOM matching in this indexed search.
 `get_family` accepts `tree_id` and `family_id`, returning parent and child links
@@ -177,13 +177,13 @@ substring match rather than an exact normalized-place query.
 
 === Choosing and chaining tools
 
-Use `list_tree_ids` first when the tree ID is unknown. Use `search_persons`
+Use `list_tree_ids` first when the tree ID is unknown. Use `search_person_by_name`
 when starting from a name; it returns direct name matches by default. Set
 `include_indirect` only when investigating broad GEDCOM-record matches, and
 check each result's `match.direct_hit` before using it. Chain a selected
-`person_id` into `get_person` for complete event, family-link, note, and
+`person_id` into `get_person_by_exact_id` for complete event, family-link, note, and
 source detail. Use `get_family` when a family ID is known, then chain its
-parent and child IDs into `get_person`. The recent-birth and recent-death
+parent and child IDs into `get_person_by_exact_id`. The recent-birth and recent-death
 tools are rankings by parsed year, not proof that the event is historically
 the latest; inspect the detailed person events before making that claim.
 
@@ -198,9 +198,9 @@ structured data. Missing or uncertain facts must be reported as such.
 The server publishes these schemas through `tools/list` and returns the same
 object shapes in `structuredContent`:
 
-* `get_person`: an object with `id`, `name`, and optional dates, alternate names,
+* `get_person_by_exact_id`: an object with `id`, `name`, and optional dates, alternate names,
   events, family links, relatives, notes, sources, and search-match metadata.
-* `search_persons`: `{ "people": [person], "total_count": 42,
+* `search_person_by_name`: `{ "people": [person], "total_count": 42,
   "has_more": true, "limit": 10, "offset": 0 }`. `total_count` is the
   number of matching indexed candidates; `has_more` indicates whether another
   page exists at the requested offset and limit.

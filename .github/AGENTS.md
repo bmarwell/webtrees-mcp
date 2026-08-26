@@ -98,9 +98,10 @@ research lead is not an established fact.
 
 ## Chaining guidance
 
-Use `list_tree_ids` when the tree is unknown. Use `search_persons` when starting
-from a name, then pass selected IDs to `get_person`. Use `get_family` when a
-family ID is known, then inspect its parent/child IDs with `get_person`.
+Use `list_tree_ids` when the tree is unknown. Use `search_person_by_name` when
+starting from a name, then pass selected GEDCOM IDs to `get_person_by_exact_id`.
+Use `get_family` when a family ID is known, then inspect its parent/child IDs
+with `get_person_by_exact_id`.
 Relationship and analysis tools must return the IDs and evidence needed for a
 follow-up lookup. Agents should verify relationships through explicit family
 links or a relationship-path tool rather than surname similarity.

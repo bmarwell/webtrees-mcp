@@ -35,7 +35,7 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0")
 	RegisterTools(mcpServer, nil)
-	for _, name := range []string{"get_person", "search_persons", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"get_person_by_exact_id", "search_person_by_name", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)
@@ -62,31 +62,39 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 			}
 		}
 	}
-	searchTool := mcpServer.GetTool("search_persons")
+	searchTool := mcpServer.GetTool("search_person_by_name")
+	exactTool := mcpServer.GetTool("get_person_by_exact_id")
+	personIDSchema, ok := exactTool.Tool.InputSchema.Properties["person_id"].(map[string]any)
+	if !ok || personIDSchema["type"] != "string" || personIDSchema["pattern"] != `^I[0-9]+$` {
+		t.Errorf("get_person_by_exact_id must require a numeric GEDCOM ID pattern: %#v", exactTool.Tool.InputSchema.Properties["person_id"])
+	}
+	if !strings.Contains(strings.ToLower(exactTool.Tool.Description), "do not pass a person's name") {
+		t.Errorf("exact lookup description must reject names: %q", exactTool.Tool.Description)
+	}
 	for _, field := range []string{"people", "total_count", "has_more", "limit", "offset"} {
 		if _, ok := searchTool.Tool.OutputSchema.Properties[field]; !ok {
-			t.Errorf("search_persons output schema lacks %s", field)
+			t.Errorf("search_person_by_name output schema lacks %s", field)
 		}
 	}
 	if !strings.Contains(strings.ToLower(searchTool.Tool.Description), "read content") {
-		t.Errorf("search_persons description lacks content guidance: %q", searchTool.Tool.Description)
+		t.Errorf("search_person_by_name description lacks content guidance: %q", searchTool.Tool.Description)
 	}
 	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
-		t.Error("search_persons lacks include_indirect input metadata")
+		t.Error("search_person_by_name lacks include_indirect input metadata")
 	}
 	matchModeSchema, ok := searchTool.Tool.InputSchema.Properties["match_mode"].(map[string]any)
 	if !ok || matchModeSchema["default"] != "prefix" || !reflect.DeepEqual(matchModeSchema["enum"], []string{"exact", "prefix", "fuzzy"}) {
-		t.Errorf("unexpected search_persons match_mode schema: %#v", searchTool.Tool.InputSchema.Properties["match_mode"])
+		t.Errorf("unexpected search_person_by_name match_mode schema: %#v", searchTool.Tool.InputSchema.Properties["match_mode"])
 	}
 	limitSchema, ok := searchTool.Tool.InputSchema.Properties["limit"].(map[string]any)
 	if !ok || limitSchema["default"] != 10 || limitSchema["minimum"] != 1 || limitSchema["maximum"] != 100 {
-		t.Errorf("unexpected search_persons limit schema: %#v", searchTool.Tool.InputSchema.Properties["limit"])
+		t.Errorf("unexpected search_person_by_name limit schema: %#v", searchTool.Tool.InputSchema.Properties["limit"])
 	}
 	offsetSchema, ok := searchTool.Tool.InputSchema.Properties["offset"].(map[string]any)
 	if !ok || offsetSchema["default"] != 0 || offsetSchema["minimum"] != 0 || offsetSchema["maximum"] != 10000 {
-		t.Errorf("unexpected search_persons offset schema: %#v", searchTool.Tool.InputSchema.Properties["offset"])
+		t.Errorf("unexpected search_person_by_name offset schema: %#v", searchTool.Tool.InputSchema.Properties["offset"])
 	}
-	for _, name := range []string{"search_persons", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"search_person_by_name", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		for _, argument := range []string{"limit", "offset"} {
 			if _, ok := tool.Tool.InputSchema.Properties[argument]; !ok {
@@ -96,13 +104,28 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	}
 	for _, argument := range []string{"given_name", "sex", "birth_year_min", "birth_year_max", "death_year_min", "death_year_max"} {
 		if _, ok := searchTool.Tool.InputSchema.Properties[argument]; !ok {
-			t.Errorf("search_persons lacks %s input metadata", argument)
+			t.Errorf("search_person_by_name lacks %s input metadata", argument)
 		}
 	}
 }
 
+func TestExactPersonLookupRejectsHumanName(t *testing.T) {
+	handler := getPersonByExactIDHandler(nil)
+	result, err := handler(context.Background(), framework.CallToolRequest{
+		Params: framework.CallToolParams{Arguments: map[string]any{
+			"tree_id": 1, "person_id": "A fictional person",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result == nil || !result.IsError {
+		t.Fatalf("expected a validation error, got %#v", result)
+	}
+}
+
 func TestSearchPersonsRejectsInvalidInput(t *testing.T) {
-	handler := searchPersonsHandler(nil)
+	handler := searchPersonByNameHandler(nil)
 	for _, test := range []struct {
 		name string
 		args map[string]any
