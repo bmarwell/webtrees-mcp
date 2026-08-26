@@ -101,6 +101,8 @@ func TestSearchPersonsRejectsInvalidInput(t *testing.T) {
 		args map[string]any
 	}{
 		{name: "blank tree", args: map[string]any{"tree_id": " ", "surname": "Example"}},
+		{name: "literal default tree", args: map[string]any{"tree_id": "default", "surname": "Example"}},
+		{name: "zero tree", args: map[string]any{"tree_id": 0, "surname": "Example"}},
 		{name: "blank surname", args: map[string]any{"tree_id": "tree", "surname": "\t"}},
 		{name: "negative limit", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": -1}},
 		{name: "limit too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": 101}},
