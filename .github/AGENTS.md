@@ -41,7 +41,8 @@ or `{ "trees": [...] }`; do not return a top-level array as
 `structuredContent`. Error results use diagnostic `content`, set the error
 state through the MCP helper, and do not pretend to contain successful data.
 
-Output DTOs should expose stable `tree_id`, `person_id`, and `family_id` values.
+Output DTOs should expose stable `person_id` and `family_id` values. The active
+tree is configured at startup and must not be repeated in tool inputs.
 Preserve missing, uncertain, and partial facts explicitly. Never turn a
 probable death, inferred relationship, or ranking based on incomplete dates
 into an established fact.
@@ -98,7 +99,8 @@ research lead is not an established fact.
 
 ## Chaining guidance
 
-Use `list_tree_ids` when the tree is unknown. Use `search_person_by_name` when
+The tree is selected once at startup with the required `-tree-id=<numeric ID>`
+argument; tools do not accept `tree_id`. Use `search_person_by_name` when
 starting from a name, then pass selected GEDCOM IDs to `get_person_by_exact_id`.
 Use `get_family` when a family ID is known, then inspect its parent/child IDs
 with `get_person_by_exact_id`.

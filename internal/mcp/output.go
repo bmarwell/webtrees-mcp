@@ -70,12 +70,6 @@ type familyOutputDTO struct {
 	Sources  []sourceOutput   `json:"sources,omitempty"`
 }
 
-type treeOutput struct {
-	ID    int    `json:"tree_id"`
-	Name  string `json:"name,omitempty"`
-	Title string `json:"title,omitempty"`
-}
-
 type peopleResultDTO struct {
 	People []personResultDTO `json:"people"`
 }
@@ -93,10 +87,6 @@ func searchPeopleResult(results []domain.PersonSearchResult, totalCount, limit, 
 		People: searchPersonOutputs(results), TotalCount: totalCount,
 		HasMore: offset+len(results) < totalCount, Limit: limit, Offset: offset,
 	}
-}
-
-type treesResultDTO struct {
-	Trees []treeOutput `json:"trees"`
 }
 
 type relationshipPathStepOutput struct {
@@ -238,18 +228,6 @@ func familyOutput(family domain.Family) familyOutputDTO {
 		ID: family.ID, Parents: relativeOutputs(family.Parents), Children: relativeOutputs(family.Children),
 		Events: eventOutputs(family.Events), Notes: family.Notes, Sources: sourceOutputs(family.Sources),
 	}
-}
-
-func treeOutputs(trees []domain.Tree) []treeOutput {
-	outputs := make([]treeOutput, 0, len(trees))
-	for _, tree := range trees {
-		outputs = append(outputs, treeOutput{ID: tree.ID, Name: tree.Name, Title: tree.Title})
-	}
-	return outputs
-}
-
-func treesResult(trees []domain.Tree) treesResultDTO {
-	return treesResultDTO{Trees: treeOutputs(trees)}
 }
 
 func relationshipPathResult(fromID, toID string, found bool, path []domain.RelationshipPathStep) relationshipPathResultDTO {

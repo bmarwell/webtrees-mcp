@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +43,7 @@ const (
 
 func run() error {
 	dsn := flag.String("dsn", "", "MariaDB connection string")
+	treeID := flag.Int("tree-id", 0, "numeric webtrees tree ID to query")
 	prefix := flag.String("prefix", "wt", "Webtrees table prefix")
 	httpEnabled := flag.Bool("http", false, "listen for MCP requests over HTTP")
 	httpDebug := flag.Bool("http-debug", false, "log HTTP request and response headers and bodies to stdout")
@@ -52,6 +54,9 @@ func run() error {
 	flag.Parse()
 	if *dsn == "" {
 		return fmt.Errorf("-dsn is required")
+	}
+	if *treeID < 1 {
+		return fmt.Errorf("-tree-id must be a positive numeric ID")
 	}
 	if *httpDebugBodyLimit < 0 {
 		return fmt.Errorf("-http-debug-body-limit must not be negative")
@@ -77,7 +82,7 @@ func run() error {
 		return fmt.Errorf("create database reader: %w", err)
 	}
 	s := server.NewMCPServer("webtrees-mcp", "0.1.0")
-	webtreesmcp.RegisterTools(s, reader)
+	webtreesmcp.RegisterTools(s, reader, strconv.Itoa(*treeID))
 	if *httpEnabled {
 		log.SetOutput(os.Stdout)
 		address := net.JoinHostPort(*httpHost, fmt.Sprintf("%d", *httpPort))

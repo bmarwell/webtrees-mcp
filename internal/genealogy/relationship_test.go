@@ -27,8 +27,6 @@ func (r relationshipRepository) SearchEvents(string, string, string, string, str
 	return nil, nil
 }
 
-func (r relationshipRepository) ListTrees(int, int) ([]domain.Tree, error) { return nil, nil }
-
 func (r relationshipRepository) ListRecentlyBorn(string, int, int) ([]domain.Person, error) {
 	return nil, nil
 }

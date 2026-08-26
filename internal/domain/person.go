@@ -67,12 +67,6 @@ type PersonSearchResult struct {
 	Match  SearchMatch
 }
 
-type Tree struct {
-	ID    int
-	Name  string
-	Title string
-}
-
 type Family struct {
 	ID       string
 	Parents  []Relative

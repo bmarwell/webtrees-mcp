@@ -34,8 +34,8 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 
 func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0")
-	RegisterTools(mcpServer, nil)
-	for _, name := range []string{"get_person_by_exact_id", "search_person_by_name", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	RegisterTools(mcpServer, nil, "1")
+	for _, name := range []string{"get_person_by_exact_id", "search_person_by_name", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)
@@ -55,11 +55,8 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 				}
 			}
 		}
-		if name != "list_tree_ids" {
-			treeSchema, ok := tool.Tool.InputSchema.Properties["tree_id"].(map[string]any)
-			if !ok || treeSchema["type"] != "integer" || treeSchema["minimum"] != 1 {
-				t.Errorf("tool %q must declare positive numeric tree_id: %#v", name, tool.Tool.InputSchema.Properties["tree_id"])
-			}
+		if _, ok := tool.Tool.InputSchema.Properties["tree_id"]; ok {
+			t.Errorf("tool %q must not expose tree_id; it is configured at startup", name)
 		}
 	}
 	searchTool := mcpServer.GetTool("search_person_by_name")
@@ -94,7 +91,7 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	if !ok || offsetSchema["default"] != 0 || offsetSchema["minimum"] != 0 || offsetSchema["maximum"] != 10000 {
 		t.Errorf("unexpected search_person_by_name offset schema: %#v", searchTool.Tool.InputSchema.Properties["offset"])
 	}
-	for _, name := range []string{"search_person_by_name", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"search_person_by_name", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		for _, argument := range []string{"limit", "offset"} {
 			if _, ok := tool.Tool.InputSchema.Properties[argument]; !ok {
@@ -110,10 +107,10 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 }
 
 func TestExactPersonLookupRejectsHumanName(t *testing.T) {
-	handler := getPersonByExactIDHandler(nil)
+	handler := getPersonByExactIDHandler(nil, "1")
 	result, err := handler(context.Background(), framework.CallToolRequest{
 		Params: framework.CallToolParams{Arguments: map[string]any{
-			"tree_id": 1, "person_id": "A fictional person",
+			"person_id": "A fictional person",
 		}},
 	})
 	if err != nil {
@@ -125,20 +122,17 @@ func TestExactPersonLookupRejectsHumanName(t *testing.T) {
 }
 
 func TestSearchPersonsRejectsInvalidInput(t *testing.T) {
-	handler := searchPersonByNameHandler(nil)
+	handler := searchPersonByNameHandler(nil, "1")
 	for _, test := range []struct {
 		name string
 		args map[string]any
 	}{
-		{name: "blank tree", args: map[string]any{"tree_id": " ", "surname": "Example"}},
-		{name: "literal default tree", args: map[string]any{"tree_id": "default", "surname": "Example"}},
-		{name: "zero tree", args: map[string]any{"tree_id": 0, "surname": "Example"}},
-		{name: "blank surname", args: map[string]any{"tree_id": "tree", "surname": "\t"}},
-		{name: "negative limit", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": -1}},
-		{name: "limit too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": 101}},
-		{name: "negative offset", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": -1}},
-		{name: "offset too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": 10001}},
-		{name: "unknown match mode", args: map[string]any{"tree_id": "tree", "surname": "Example", "match_mode": "contains"}},
+		{name: "blank surname", args: map[string]any{"surname": "\t"}},
+		{name: "negative limit", args: map[string]any{"surname": "Example", "limit": -1}},
+		{name: "limit too large", args: map[string]any{"surname": "Example", "limit": 101}},
+		{name: "negative offset", args: map[string]any{"surname": "Example", "offset": -1}},
+		{name: "offset too large", args: map[string]any{"surname": "Example", "offset": 10001}},
+		{name: "unknown match mode", args: map[string]any{"surname": "Example", "match_mode": "contains"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := handler(context.Background(), framework.CallToolRequest{
@@ -178,11 +172,6 @@ func TestCollectionResultsUseObjectShapes(t *testing.T) {
 	if len(people.People) != 1 || people.People[0].ID != "I44" {
 		t.Fatalf("unexpected people result: %+v", people)
 	}
-	trees := treesResult([]domain.Tree{{ID: 42}})
-	if len(trees.Trees) != 1 || trees.Trees[0].ID != 42 {
-		t.Fatalf("unexpected trees result: %+v", trees)
-	}
-
 	result, err := structuredResult(people, "Found 1 person.")
 	if err != nil {
 		t.Fatalf("structuredResult returned an error: %v", err)
@@ -295,7 +284,7 @@ func TestPersonSummaryListsEventsWithTypeAndPlace(t *testing.T) {
 	}
 }
 
-func TestFamilyAndTreeSummariesHandleOptionalData(t *testing.T) {
+func TestFamilySummaryHandlesOptionalData(t *testing.T) {
 	if got := familySummary(domain.Family{ID: "F1"}); got != "Family ID: F1\nParents: none\nChildren: none\nEvents: none\nNotes: none\nSources: none" {
 		t.Errorf("familySummary() = %q", got)
 	}
@@ -305,9 +294,6 @@ func TestFamilyAndTreeSummariesHandleOptionalData(t *testing.T) {
 		Children: []domain.Relative{{PersonID: "I3"}, {PersonID: "I4"}},
 	}); got != "Family ID: F1\nParents:\n- I1\n- I2\nChildren:\n- I3\n- I4\nEvents: none\nNotes: none\nSources: none" {
 		t.Errorf("familySummary() = %q", got)
-	}
-	if got := treesSummary(nil); got != "Trees: none found." {
-		t.Errorf("treesSummary(nil) = %q", got)
 	}
 }
 

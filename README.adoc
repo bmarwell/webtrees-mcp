@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person_by_exact_id`, `search_person_by_name`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person_by_exact_id`, `search_person_by_name`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -57,14 +57,14 @@ Build or run the server with a webtrees DSN:
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees'
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1
 ----
 
 The table prefix defaults to `wt` and can be changed with `-prefix`:
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -prefix wt
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -prefix wt -tree-id=1
 ----
 
 The server reads MCP messages from standard input and writes protocol responses to standard output. Diagnostic errors are written to standard error.
@@ -73,7 +73,7 @@ HTTP is disabled by default. Enable the streamable HTTP transport explicitly wit
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http
 ----
 
 The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
@@ -90,14 +90,14 @@ For troubleshooting, `-http-debug` logs request and response headers and bodies 
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-debug
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http -http-debug
 ----
 
 For Docker or Podman port publishing, bind to all container interfaces:
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-host 0.0.0.0
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http -http-host 0.0.0.0
 ----
 
 `-http-host` also accepts a specific interface or IP address. Binding to `0.0.0.0` or a public address is not recommended without authentication, firewall rules, and transport security because the HTTP endpoint exposes genealogy data.
@@ -106,7 +106,7 @@ Use `-http-port` to select another port:
 
 [source,shell]
 ----
-go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -http -http-port 9090
+go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http -http-port 9090
 ----
 
 == MCP tools
@@ -130,13 +130,13 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 [source,json]
 ----
 {
-  "tree_id": 42,
   "person_id": "I1"
 }
 ----
 
-`search_person_by_name` requires a positive numeric `tree_id` and a non-blank string
-`surname`.
+All tools query the numeric tree selected at startup with `-tree-id=1`; they do
+not accept a `tree_id` input. `search_person_by_name` requires a non-blank
+string `surname`.
 It also accepts optional indexed `given_name` and `sex` fragments, inclusive
 `birth_year_min`, `birth_year_max`, `death_year_min`, and `death_year_max`
 bounds. `match_mode` controls name matching: `exact` uses indexed equality,
@@ -151,16 +151,16 @@ fields; it does not scan raw GEDCOM records. Returned IDs are research leads;
 chain them into `get_person_by_exact_id` for verification. The deprecated
 `include_indirect` option is accepted for compatibility but cannot enable raw
 GEDCOM matching in this indexed search.
-`get_family` accepts `tree_id` and `family_id`, returning parent and child links
+`get_family` accepts `family_id`, returning parent and child links
 without embedding duplicate person objects.
 
-`relationship_path` accepts `tree_id`, `from_person_id`, and `to_person_id`.
+`relationship_path` accepts `from_person_id` and `to_person_id`.
 It follows explicit family links for a bounded shortest-path search and returns
 each hop with its `family_id` evidence and relationship kind. A missing path is
 reported with `found: false`; surnames and inferred relationships are not used.
 
-`get_ancestors` and `get_descendants` accept a numeric `tree_id`, a starting
-`person_id`, and optional `max_depth` (default `5`, maximum `20`) and `limit`
+`get_ancestors` and `get_descendants` accept a starting `person_id` and optional
+`max_depth` (default `5`, maximum `20`) and `limit`
 (default `100`, maximum `500`). They traverse only explicit family links and
 return a bounded flat list of people with generation depth, relationship, and
 the `via_family_id` evidence. A `truncated` result means the configured limit
@@ -173,12 +173,18 @@ Date ranges are inclusive; an omitted boundary is unbounded. Year-only index
 entries remain year-precision results, and place matching is a case-insensitive
 substring match rather than an exact normalized-place query.
 
-`list_tree_ids` accepts optional `limit` and `offset` arguments. The born and deceased listing tools accept a positive numeric `tree_id`, `limit`, and `offset`. Limits default to `10` and are capped at `100`; offsets default to `0`. Tree IDs are numeric database IDs and are ordered ascending, while recent-person lists are ordered by event year descending and person ID ascending as a deterministic tie-breaker. Request the next page by increasing `offset` by the previous `limit`. All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
+The born and deceased listing tools accept `limit` and `offset`. Limits default to
+`10` and are capped at `100`; offsets default to `0`. Recent-person lists are
+ordered by event year descending and person ID ascending as a deterministic
+tie-breaker. Request the next page by increasing `offset` by the previous
+`limit`. All people returned include parsed identifying details where available.
+Relative entries are intentionally links only, containing `person_id` and
+optional `url` and `relationship` fields; they do not embed another person object.
 
 === Choosing and chaining tools
 
-Use `list_tree_ids` first when the tree ID is unknown. Use `search_person_by_name`
-when starting from a name; it returns direct name matches by default. Set
+The tree ID is fixed by the startup `-tree-id` argument. Use
+`search_person_by_name` when starting from a name; it returns direct name matches by default. Set
 `include_indirect` only when investigating broad GEDCOM-record matches, and
 check each result's `match.direct_hit` before using it. Chain a selected
 `person_id` into `get_person_by_exact_id` for complete event, family-link, note, and
@@ -211,7 +217,6 @@ object shapes in `structuredContent`:
 * `get_ancestors` and `get_descendants`: `{ "root_person_id": "I1",
   "direction": "ancestors", "nodes": [{"person_id", "depth",
   "via_family_id", "relationship", "person"}], "truncated": false }`.
-* `list_tree_ids`: `{ "trees": [{"tree_id": 42, "name", "title"}] }`.
 
 IDs are stable within a tree. Collection results are named objects rather than
 top-level arrays, so clients can validate them against the published schemas

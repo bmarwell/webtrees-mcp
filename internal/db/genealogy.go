@@ -364,30 +364,6 @@ func (r *Reader) GetFamily(treeID, xref string) (*domain.Family, error) {
 	return &family, nil
 }
 
-func (r *Reader) ListTrees(limit, offset int) ([]domain.Tree, error) {
-	query := fmt.Sprintf("SELECT gedcom_id, gedcom_name, title FROM %s_gedcom ORDER BY gedcom_id LIMIT ? OFFSET ?", r.prefix)
-	limit, offset = genealogy.NormalizePage(limit, offset)
-	rows, err := r.db.Query(query, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var trees []domain.Tree
-	type treeRow struct {
-		id    int
-		name  string
-		title string
-	}
-	for rows.Next() {
-		var row treeRow
-		if err := rows.Scan(&row.id, &row.name, &row.title); err != nil {
-			return nil, err
-		}
-		trees = append(trees, domain.Tree{ID: row.id, Name: row.name, Title: row.title})
-	}
-	return trees, rows.Err()
-}
-
 func (r *Reader) ListRecentlyBorn(treeID string, limit, offset int) ([]domain.Person, error) {
 	return r.listByEvent(treeID, limit, offset, true)
 }
