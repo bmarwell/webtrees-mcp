@@ -50,6 +50,11 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		}
 	}
 	searchTool := mcpServer.GetTool("search_persons")
+	for _, field := range []string{"people", "total_count", "has_more", "limit", "offset"} {
+		if _, ok := searchTool.Tool.OutputSchema.Properties[field]; !ok {
+			t.Errorf("search_persons output schema lacks %s", field)
+		}
+	}
 	if !strings.Contains(strings.ToLower(searchTool.Tool.Description), "read content") {
 		t.Errorf("search_persons description lacks content guidance: %q", searchTool.Tool.Description)
 	}
@@ -146,6 +151,16 @@ func TestCollectionResultsUseObjectShapes(t *testing.T) {
 	}
 	if _, ok := result.StructuredContent.(peopleResultDTO); !ok {
 		t.Fatalf("collection structured content should be an object, got %T", result.StructuredContent)
+	}
+}
+
+func TestSearchPeopleResultIncludesPaginationMetadata(t *testing.T) {
+	result := searchPeopleResult([]domain.PersonSearchResult{{Person: domain.Person{ID: "I1"}}}, 3, 1, 1)
+	if len(result.People) != 1 || result.TotalCount != 3 || !result.HasMore || result.Limit != 1 || result.Offset != 1 {
+		t.Fatalf("unexpected search pagination result: %+v", result)
+	}
+	if final := searchPeopleResult(nil, 0, 10, 0); final.HasMore {
+		t.Fatal("last page must not report more results")
 	}
 }
 

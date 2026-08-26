@@ -6,7 +6,7 @@ import "webtrees-mcp/internal/domain"
 // SQL, fixtures, or another data source without leaking their representations.
 type Repository interface {
 	GetPerson(treeID, personID string) (*domain.Person, error)
-	SearchPersons(criteria PersonSearchCriteria) ([]domain.PersonSearchResult, error)
+	SearchPersons(criteria PersonSearchCriteria) (PersonSearchResults, error)
 	GetFamily(treeID, familyID string) (*domain.Family, error)
 	SearchEvents(treeID, eventType, fromDate, toDate, place string, limit, offset int) ([]domain.EventSearchResult, error)
 	ListTrees(limit, offset int) ([]domain.Tree, error)
@@ -29,6 +29,13 @@ type PersonSearchCriteria struct {
 	IncludeIndirect bool
 	Limit           int
 	Offset          int
+}
+
+// PersonSearchResults contains one page and the total number of matching
+// indexed candidates.
+type PersonSearchResults struct {
+	People     []domain.PersonSearchResult
+	TotalCount int
 }
 
 const (

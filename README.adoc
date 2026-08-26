@@ -192,8 +192,11 @@ object shapes in `structuredContent`:
 
 * `get_person`: an object with `id`, `name`, and optional dates, alternate names,
   events, family links, relatives, notes, sources, and search-match metadata.
-* `search_persons`, `list_recently_born`, and `list_recently_deceased`:
-  `{ "people": [person] }`.
+* `search_persons`: `{ "people": [person], "total_count": 42,
+  "has_more": true, "limit": 10, "offset": 0 }`. `total_count` is the
+  number of matching indexed candidates; `has_more` indicates whether another
+  page exists at the requested offset and limit.
+* `list_recently_born` and `list_recently_deceased`: `{ "people": [person] }`.
 * `search_events`: `{ "events": [{"person_id", "type", "date", "place"}] }`.
 * `get_family`: an object with `family_id` and optional `parents`, `children`,
   `events`, `notes`, and `sources`.
@@ -338,7 +341,7 @@ surname search might return this summary:
   "content": [
     {
       "type": "text",
-      "text": "Found 2 people matching search \"Mayer\".\n\nPerson: Ada Mayer (I44)\nEvents:\n- BIRT: 1982\n\nPerson: Bruno Schmidt (I48)\nEvents:\n- OCCU: Mayer"
+      "text": "Found 2 people matching search \"Mayer\".\n\nResult type: research lead\nMatch: direct indexed name match\nMatched fields: surname\nPerson ID: I44\nName: Ada Mayer\nSex: not recorded\nBirth date: 1982\nDeath date: not recorded\nOccupation: not recorded\nEvents:\n- BIRT:\n  Date: 1982\n  Place: not recorded\n  Value: not recorded\n  Notes: none\n  Sources: none\nAlternate names:\n- Ada Doe (married)\nRelatives:\n- I45 (spouse)\n- I46 (child)\n- I47 (child)\nFamily links: none\nNotes: none\nSources: none\n\nResult type: research lead\nMatch: direct indexed name match\nMatched fields: surname\nPerson ID: I48\nName: Bruno Schmidt\nSex: not recorded\nBirth date: not recorded\nDeath date: not recorded\nOccupation: Mayer\nEvents:\n- OCCU:\n  Date: not recorded\n  Place: not recorded\n  Value: Mayer\n  Notes: none\n  Sources: none\nAlternate names: none\nRelatives: none\nFamily links: none\nNotes: none\nSources: none"
     }
   ],
   "structuredContent": {
@@ -347,15 +350,19 @@ surname search might return this summary:
         "id": "I44",
         "name": {"given": "Ada", "surname": "Mayer"},
         "birth_date": "1982",
-        "match": {"direct_hit": true, "fields": ["name"]}
+        "match": {"direct_hit": true, "fields": ["surname"]}
       },
       {
         "id": "I48",
         "name": {"given": "Bruno", "surname": "Schmidt"},
         "occupation": "Mayer",
-        "match": {"direct_hit": false, "fields": ["gedcom_record"]}
+        "match": {"direct_hit": true, "fields": ["surname"]}
       }
-    ]
+    ],
+    "total_count": 2,
+    "has_more": false,
+    "limit": 10,
+    "offset": 0
   }
 }
 ----

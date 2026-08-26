@@ -165,7 +165,7 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 	return &person, nil
 }
 
-func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domain.PersonSearchResult, error) {
+func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) (genealogy.PersonSearchResults, error) {
 	limit, offset := genealogy.NormalizePage(criteria.Limit, criteria.Offset)
 	mode := criteria.MatchMode
 	if mode == "" {
@@ -202,7 +202,15 @@ func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domai
 			args = append(args, *value)
 		}
 	}
-	query := fmt.Sprintf("SELECT DISTINCT i.i_id, i.i_gedcom FROM %s_individuals i INNER JOIN %s_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE %s ORDER BY i.i_id LIMIT ? OFFSET ?", r.prefix, r.prefix, strings.Join(conditions, " AND "))
+	where := strings.Join(conditions, " AND ")
+	var totalCount int
+	if mode != "fuzzy" {
+		countQuery := fmt.Sprintf("SELECT COUNT(DISTINCT i.i_id) FROM %s_individuals i INNER JOIN %s_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE %s", r.prefix, r.prefix, where)
+		if err := r.db.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
+			return genealogy.PersonSearchResults{}, err
+		}
+	}
+	query := fmt.Sprintf("SELECT DISTINCT i.i_id, i.i_gedcom FROM %s_individuals i INNER JOIN %s_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE %s ORDER BY i.i_id LIMIT ? OFFSET ?", r.prefix, r.prefix, where)
 	if mode == "fuzzy" {
 		args = append(args, genealogy.MaxFuzzyCandidates, 0)
 	} else {
@@ -210,14 +218,14 @@ func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domai
 	}
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return genealogy.PersonSearchResults{}, err
 	}
 	defer rows.Close()
 	people := make([]domain.PersonSearchResult, 0, limit)
 	for rows.Next() {
 		var id, raw string
 		if err := rows.Scan(&id, &raw); err != nil {
-			return nil, err
+			return genealogy.PersonSearchResults{}, err
 		}
 		person := parseIndividualGEDCOM(id, raw)
 		result := domain.PersonSearchResult{Person: person, Match: domain.SearchMatch{DirectHit: true, Fields: []string{"surname"}}}
@@ -236,21 +244,22 @@ func (r *Reader) SearchPersons(criteria genealogy.PersonSearchCriteria) ([]domai
 		people = append(people, result)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return genealogy.PersonSearchResults{}, err
 	}
 	if mode == "fuzzy" {
+		totalCount = len(people)
 		sort.SliceStable(people, func(i, j int) bool {
 			return fuzzyDistance(people[i].Match.Fields) < fuzzyDistance(people[j].Match.Fields)
 		})
 		if offset >= len(people) {
-			return []domain.PersonSearchResult{}, nil
+			return genealogy.PersonSearchResults{People: []domain.PersonSearchResult{}, TotalCount: totalCount}, nil
 		}
 		people = people[offset:]
 		if len(people) > limit {
 			people = people[:limit]
 		}
 	}
-	return people, nil
+	return genealogy.PersonSearchResults{People: people, TotalCount: totalCount}, nil
 }
 
 func nameMatchSQL(mode, value string) (string, string) {

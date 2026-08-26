@@ -80,6 +80,21 @@ type peopleResultDTO struct {
 	People []personResultDTO `json:"people"`
 }
 
+type searchPeopleResultDTO struct {
+	People     []personResultDTO `json:"people"`
+	TotalCount int               `json:"total_count"`
+	HasMore    bool              `json:"has_more"`
+	Limit      int               `json:"limit"`
+	Offset     int               `json:"offset"`
+}
+
+func searchPeopleResult(results []domain.PersonSearchResult, totalCount, limit, offset int) searchPeopleResultDTO {
+	return searchPeopleResultDTO{
+		People: searchPersonOutputs(results), TotalCount: totalCount,
+		HasMore: offset+len(results) < totalCount, Limit: limit, Offset: offset,
+	}
+}
+
 type treesResultDTO struct {
 	Trees []treeOutput `json:"trees"`
 }

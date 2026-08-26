@@ -54,26 +54,29 @@ func TestSearchPersonsUsesIndexedNameCandidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	query := regexp.QuoteMeta("SELECT DISTINCT i.i_id, i.i_gedcom FROM wt_individuals i INNER JOIN wt_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE i.i_file = ? AND n.n_surname LIKE ? ORDER BY i.i_id LIMIT ? OFFSET ?")
+	countQuery := regexp.QuoteMeta("SELECT COUNT(DISTINCT i.i_id) FROM wt_individuals i INNER JOIN wt_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE i.i_file = ? AND n.n_surname LIKE ?")
 	rows := sqlmock.NewRows([]string{"i_id", "i_gedcom"}).
 		AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/").
 		AddRow("I2", "0 @I2@ INDI\n1 NAME Bruno /Mayer/")
+	mock.ExpectQuery(countQuery).WithArgs("tree", "Mayer%").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 	mock.ExpectQuery(query).WithArgs("tree", "Mayer%", 10, 0).WillReturnRows(rows)
-	people, err := reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayer", MatchMode: "prefix", Limit: 10})
+	results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayer", MatchMode: "prefix", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(people) != 2 || people[0].Person.ID != "I1" || !people[0].Match.DirectHit {
-		t.Fatalf("unexpected default search results: %+v", people)
+	if results.TotalCount != 2 || len(results.People) != 2 || results.People[0].Person.ID != "I1" || !results.People[0].Match.DirectHit {
+		t.Fatalf("unexpected default search results: %+v", results)
 	}
+	mock.ExpectQuery(countQuery).WithArgs("tree", "Mayer%").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 	mock.ExpectQuery(query).WithArgs("tree", "Mayer%", 10, 0).WillReturnRows(sqlmock.NewRows([]string{"i_id", "i_gedcom"}).
 		AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/").
 		AddRow("I2", "0 @I2@ INDI\n1 NAME Bruno /Mayer/"))
-	people, err = reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayer", MatchMode: "prefix", IncludeIndirect: true, Limit: 10})
+	results, err = reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayer", MatchMode: "prefix", IncludeIndirect: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(people) != 2 || !people[0].Match.DirectHit || !people[1].Match.DirectHit {
-		t.Fatalf("unexpected inclusive search results: %+v", people)
+	if len(results.People) != 2 || !results.People[0].Match.DirectHit || !results.People[1].Match.DirectHit {
+		t.Fatalf("unexpected inclusive search results: %+v", results)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -93,15 +96,17 @@ func TestSearchPersonsAppliesIndexedFiltersBeforeReadingGEDCOM(t *testing.T) {
 	birthMin, birthMax := 1900, 1950
 	deathMax := 2020
 	query := regexp.QuoteMeta("SELECT DISTINCT i.i_id, i.i_gedcom FROM wt_individuals i INNER JOIN wt_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE i.i_file = ? AND n.n_surname LIKE ? AND n.n_givn LIKE ? AND i.i_sex = ? AND i.i_birth_year >= ? AND i.i_birth_year <= ? AND i.i_death_year <= ? ORDER BY i.i_id LIMIT ? OFFSET ?")
+	countQuery := regexp.QuoteMeta("SELECT COUNT(DISTINCT i.i_id) FROM wt_individuals i INNER JOIN wt_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE i.i_file = ? AND n.n_surname LIKE ? AND n.n_givn LIKE ? AND i.i_sex = ? AND i.i_birth_year >= ? AND i.i_birth_year <= ? AND i.i_death_year <= ?")
+	mock.ExpectQuery(countQuery).WithArgs("tree", "Mayer%", "Ada%", "F", birthMin, birthMax, deathMax).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectQuery(query).WithArgs("tree", "Mayer%", "Ada%", "F", birthMin, birthMax, deathMax, 10, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"i_id", "i_gedcom"}).AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/"))
-	people, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
+	results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
 		TreeID: "tree", Surname: "Mayer", GivenName: "Ada", Sex: "F",
 		MatchMode:    "prefix",
 		BirthYearMin: &birthMin, BirthYearMax: &birthMax, DeathYearMax: &deathMax, Limit: 10,
 	})
-	if err != nil || len(people) != 1 || people[0].Person.ID != "I1" {
-		t.Fatalf("unexpected filtered results: %v %+v", err, people)
+	if err != nil || results.TotalCount != 1 || len(results.People) != 1 || results.People[0].Person.ID != "I1" {
+		t.Fatalf("unexpected filtered results: %v %+v", err, results)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -121,9 +126,9 @@ func TestSearchPersonsFuzzyModeBoundsIndexedCandidates(t *testing.T) {
 	query := regexp.QuoteMeta("SELECT DISTINCT i.i_id, i.i_gedcom FROM wt_individuals i INNER JOIN wt_name n ON n.n_file = i.i_file AND n.n_id = i.i_id WHERE i.i_file = ? AND n.n_surname LIKE ? ORDER BY i.i_id LIMIT ? OFFSET ?")
 	mock.ExpectQuery(query).WithArgs("tree", "M%", genealogy.MaxFuzzyCandidates, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"i_id", "i_gedcom"}).AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/"))
-	people, err := reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayr", MatchMode: "fuzzy", Limit: 10})
-	if err != nil || len(people) != 1 || people[0].Person.ID != "I1" {
-		t.Fatalf("unexpected fuzzy results: %v %+v", err, people)
+	results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{TreeID: "tree", Surname: "Mayr", MatchMode: "fuzzy", Limit: 10})
+	if err != nil || results.TotalCount != 1 || len(results.People) != 1 || results.People[0].Person.ID != "I1" {
+		t.Fatalf("unexpected fuzzy results: %v %+v", err, results)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

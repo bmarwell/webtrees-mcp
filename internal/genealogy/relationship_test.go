@@ -15,8 +15,8 @@ func (r relationshipRepository) GetPerson(_ string, id string) (*domain.Person, 
 	return r.people[id], nil
 }
 
-func (r relationshipRepository) SearchPersons(PersonSearchCriteria) ([]domain.PersonSearchResult, error) {
-	return nil, nil
+func (r relationshipRepository) SearchPersons(PersonSearchCriteria) (PersonSearchResults, error) {
+	return PersonSearchResults{}, nil
 }
 
 func (r relationshipRepository) GetFamily(_ string, id string) (*domain.Family, error) {

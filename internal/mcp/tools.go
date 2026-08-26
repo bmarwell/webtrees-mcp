@@ -22,7 +22,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
 		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person. Read content as the factual lead record."),
-		framework.WithOutputSchema[peopleResultDTO](),
+		framework.WithOutputSchema[searchPeopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
 		framework.WithString("given_name", framework.MinLength(1), framework.Description("Optional given-name fragment, matched against the indexed given-name field")),
@@ -209,7 +209,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if args.DeathYearMin != nil && args.DeathYearMax != nil && *args.DeathYearMin > *args.DeathYearMax {
 			return framework.NewToolResultError("death_year_min must not be greater than death_year_max"), nil
 		}
-		results, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
+		searchResults, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
 			TreeID: args.TreeID, Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex, MatchMode: args.MatchMode,
 			BirthYearMin: args.BirthYearMin, BirthYearMax: args.BirthYearMax,
 			DeathYearMin: args.DeathYearMin, DeathYearMax: args.DeathYearMax,
@@ -218,11 +218,8 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		people := make([]domain.Person, 0, len(results))
-		for _, result := range results {
-			people = append(people, result.Person)
-		}
-		return structuredResult(peopleResultFromOutputs(searchPersonOutputs(results)), searchPeopleSummary(results, fmt.Sprintf("Found %d people matching search %q.", len(people), args.Surname)))
+		limit, offset := genealogy.NormalizePage(args.Limit, args.Offset)
+		return structuredResult(searchPeopleResult(searchResults.People, searchResults.TotalCount, limit, offset), searchPeopleSummary(searchResults.People, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname)))
 	}
 }
 
