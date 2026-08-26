@@ -125,6 +125,11 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 
 It returns JSON in this shape:
 
+Tool results carry this payload in `structuredContent`. The `content` field is
+kept for MCP compatibility but is currently empty; the server does not
+duplicate the payload as stringified JSON text. A future human-readable
+summary could be added to `content` without replacing the native payload.
+
 [source,json]
 ----
 {

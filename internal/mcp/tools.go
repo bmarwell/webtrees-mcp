@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 
 	"webtrees-mcp/internal/db"
 	"webtrees-mcp/internal/model"
@@ -116,11 +115,10 @@ func listPeopleHandler(reader *db.Reader, list func(*db.Reader, string, int) ([]
 }
 
 func jsonResult(value any) (*framework.CallToolResult, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return framework.NewToolResultText(string(data)), nil
+	return &framework.CallToolResult{
+		Content:           []framework.Content{},
+		StructuredContent: value,
+	}, nil
 }
 
 func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
