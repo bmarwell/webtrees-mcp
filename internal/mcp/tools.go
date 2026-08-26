@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"webtrees-mcp/internal/db"
 	"webtrees-mcp/internal/model"
@@ -60,7 +62,7 @@ func searchPersonsHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return jsonResult(people)
+		return structuredResult(people, peopleSummary(people, fmt.Sprintf("Found %d people matching surname %q.", len(people), args.Surname)))
 	}
 }
 
@@ -80,7 +82,7 @@ func getFamilyHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return jsonResult(family)
+		return structuredResult(family, familySummary(*family))
 	}
 }
 
@@ -90,7 +92,7 @@ func listTreesHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return jsonResult(trees)
+		return structuredResult(trees, treesSummary(trees))
 	}
 }
 
@@ -110,15 +112,12 @@ func listPeopleHandler(reader *db.Reader, list func(*db.Reader, string, int) ([]
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return jsonResult(people)
+		return structuredResult(people, peopleSummary(people, fmt.Sprintf("Found %d people.", len(people))))
 	}
 }
 
-func jsonResult(value any) (*framework.CallToolResult, error) {
-	return &framework.CallToolResult{
-		Content:           []framework.Content{},
-		StructuredContent: value,
-	}, nil
+func structuredResult(value any, summary string) (*framework.CallToolResult, error) {
+	return framework.NewToolResultStructured(value, summary), nil
 }
 
 func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
@@ -137,6 +136,90 @@ func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return jsonResult(person)
+		return structuredResult(person, personSummary(*person))
 	}
+}
+
+func personSummary(person model.PersonDTO) string {
+	name := displayName(person)
+	summary := fmt.Sprintf("Person %q (%s)", name, person.ID)
+	if person.BirthDate != "" {
+		summary += " was born on " + person.BirthDate
+	} else {
+		summary += " has no recorded birth date"
+	}
+	if person.DeathDate != "" {
+		summary += " and died on " + person.DeathDate
+	}
+	if person.Occupation != "" {
+		summary += ". They worked as " + person.Occupation
+	}
+	if len(person.Relatives) > 0 {
+		relatives := make([]string, 0, len(person.Relatives))
+		for _, relative := range person.Relatives {
+			if relative.Relationship != "" {
+				relatives = append(relatives, relative.PersonID+" ("+relative.Relationship+")")
+			} else {
+				relatives = append(relatives, relative.PersonID)
+			}
+		}
+		summary += ". Associated people: " + strings.Join(relatives, ", ")
+	}
+	return summary + "."
+}
+
+func displayName(person model.PersonDTO) string {
+	return strings.TrimSpace(strings.Join([]string{person.Name.Given, person.Name.Surname}, " "))
+}
+
+func peopleSummary(people []model.PersonDTO, prefix string) string {
+	if len(people) == 0 {
+		return prefix
+	}
+	summaries := make([]string, 0, len(people))
+	for _, person := range people {
+		summaries = append(summaries, personSummary(person))
+	}
+	return prefix + " " + strings.Join(summaries, " ")
+}
+
+func familySummary(family model.FamilyDTO) string {
+	summary := fmt.Sprintf("Family %s", family.ID)
+	if len(family.Parents) > 0 {
+		parents := relativeIDs(family.Parents)
+		summary += " has parent " + strings.Join(parents, " and ")
+		if len(parents) > 1 {
+			summary = fmt.Sprintf("Family %s has parents %s", family.ID, strings.Join(parents, " and "))
+		}
+	}
+	if len(family.Children) > 0 {
+		summary += "; children: " + strings.Join(relativeIDs(family.Children), ", ")
+	}
+	return summary + "."
+}
+
+func relativeIDs(relatives []model.RelativeLink) []string {
+	ids := make([]string, 0, len(relatives))
+	for _, relative := range relatives {
+		ids = append(ids, relative.PersonID)
+	}
+	return ids
+}
+
+func treesSummary(trees []model.TreeDTO) string {
+	if len(trees) == 0 {
+		return "No trees found."
+	}
+	descriptions := make([]string, 0, len(trees))
+	for _, tree := range trees {
+		description := tree.ID
+		if tree.Name != "" {
+			description += fmt.Sprintf(" (%q)", tree.Name)
+		}
+		if tree.Title != "" {
+			description += ": " + tree.Title
+		}
+		descriptions = append(descriptions, description)
+	}
+	return fmt.Sprintf("Found %d trees: %s.", len(trees), strings.Join(descriptions, "; "))
 }

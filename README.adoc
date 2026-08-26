@@ -125,10 +125,11 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 
 It returns JSON in this shape:
 
-Tool results carry this payload in `structuredContent`. The `content` field is
-kept for MCP compatibility but is currently empty; the server does not
-duplicate the payload as stringified JSON text. A future human-readable
-summary could be added to `content` without replacing the native payload.
+Tool results carry the native payload in `structuredContent` and a concise,
+human-readable summary in `content`. The summary uses available genealogy
+fields such as names, identifiers, dates, occupations, relationships, and
+family links; unavailable details such as event places or marriage dates are
+not invented.
 
 [source,json]
 ----
