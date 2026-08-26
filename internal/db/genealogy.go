@@ -83,9 +83,10 @@ func (r *Reader) GetFamily(treeID, xref string) (*domain.Family, error) {
 	return &family, nil
 }
 
-func (r *Reader) ListTrees() ([]domain.Tree, error) {
-	query := fmt.Sprintf("SELECT gedcom_id, gedcom_name, title FROM %s_gedcom ORDER BY gedcom_id", r.prefix)
-	rows, err := r.db.Query(query)
+func (r *Reader) ListTrees(limit, offset int) ([]domain.Tree, error) {
+	query := fmt.Sprintf("SELECT gedcom_id, gedcom_name, title FROM %s_gedcom ORDER BY gedcom_id LIMIT ? OFFSET ?", r.prefix)
+	limit, offset = normalizePage(limit, offset)
+	rows, err := r.db.Query(query, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -106,18 +107,16 @@ func (r *Reader) ListTrees() ([]domain.Tree, error) {
 	return trees, rows.Err()
 }
 
-func (r *Reader) ListRecentlyBorn(treeID string, limit int) ([]domain.Person, error) {
-	return r.listByEvent(treeID, limit, true)
+func (r *Reader) ListRecentlyBorn(treeID string, limit, offset int) ([]domain.Person, error) {
+	return r.listByEvent(treeID, limit, offset, true)
 }
 
-func (r *Reader) ListRecentlyDeceased(treeID string, limit int) ([]domain.Person, error) {
-	return r.listByEvent(treeID, limit, false)
+func (r *Reader) ListRecentlyDeceased(treeID string, limit, offset int) ([]domain.Person, error) {
+	return r.listByEvent(treeID, limit, offset, false)
 }
 
-func (r *Reader) listByEvent(treeID string, limit int, born bool) ([]domain.Person, error) {
-	if limit < 1 {
-		limit = 10
-	}
+func (r *Reader) listByEvent(treeID string, limit, offset int, born bool) ([]domain.Person, error) {
+	limit, offset = normalizePage(limit, offset)
 	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ?", r.prefix)
 	rows, err := r.db.Query(query, treeID)
 	if err != nil {
@@ -147,7 +146,16 @@ func (r *Reader) listByEvent(treeID string, limit int, born bool) ([]domain.Pers
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].year > candidates[j].year })
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].year != candidates[j].year {
+			return candidates[i].year > candidates[j].year
+		}
+		return candidates[i].person.ID < candidates[j].person.ID
+	})
+	if offset >= len(candidates) {
+		return []domain.Person{}, nil
+	}
+	candidates = candidates[offset:]
 	if len(candidates) > limit {
 		candidates = candidates[:limit]
 	}
@@ -156,6 +164,24 @@ func (r *Reader) listByEvent(treeID string, limit int, born bool) ([]domain.Pers
 		people = append(people, item.person)
 	}
 	return people, nil
+}
+
+const (
+	defaultPageSize = 10
+	maxPageSize     = 100
+)
+
+func normalizePage(limit, offset int) (int, int) {
+	if limit < 1 {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
 }
 
 func gedcomYear(date string) int {

@@ -34,24 +34,27 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
-		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Pass the selected tree_id to every subsequent genealogy query."),
-		framework.WithOutputSchema[treesResultDTO]()), listTreesHandler(reader))
+		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Results are ordered by tree ID and paged with limit and offset. Pass the selected tree_id to every subsequent genealogy query."),
+		framework.WithOutputSchema[treesResultDTO](),
+		framework.WithInteger("limit", framework.Description("Maximum number of trees; defaults to 10 and is capped at 100")),
+		framework.WithInteger("offset", framework.Description("Number of trees to skip; defaults to 0"))), listTreesHandler(reader))
 	for _, spec := range []struct {
 		name string
 		desc string
-		fn   func(genealogy.Repository, string, int) ([]domain.Person, error)
+		fn   func(genealogy.Repository, string, int, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "Use when looking for the latest recorded births in a tree. Results are ordered by the parsed birth year; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
-			return r.ListRecentlyBorn(treeID, limit)
+		{"list_recently_born", "Use when looking for the latest recorded births in a tree. Results are ordered by parsed birth year and person ID, and paged with limit and offset; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+			return r.ListRecentlyBorn(treeID, limit, offset)
 		}},
-		{"list_recently_deceased", "Use when looking for the latest recorded deaths in a tree. Results are ordered by the parsed death year; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
-			return r.ListRecentlyDeceased(treeID, limit)
+		{"list_recently_deceased", "Use when looking for the latest recorded deaths in a tree. Results are ordered by parsed death year and person ID, and paged with limit and offset; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit, offset int) ([]domain.Person, error) {
+			return r.ListRecentlyDeceased(treeID, limit, offset)
 		}},
 	} {
 		s.AddTool(framework.NewTool(spec.name, framework.WithDescription(spec.desc),
 			framework.WithOutputSchema[peopleResultDTO](),
 			framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
-			framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10")),
+			framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
+			framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
 		), listPeopleHandler(reader, spec.fn))
 	}
 }
@@ -102,8 +105,18 @@ func getFamilyHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 }
 
 func listTreesHandler(reader genealogy.Repository) server.ToolHandlerFunc {
-	return func(context.Context, framework.CallToolRequest) (*framework.CallToolResult, error) {
-		trees, err := reader.ListTrees()
+	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
+		var args struct {
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		if args.Offset < 0 {
+			return framework.NewToolResultError("offset must not be negative"), nil
+		}
+		trees, err := reader.ListTrees(args.Limit, args.Offset)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -111,11 +124,12 @@ func listTreesHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	}
 }
 
-func listPeopleHandler(reader genealogy.Repository, list func(genealogy.Repository, string, int) ([]domain.Person, error)) server.ToolHandlerFunc {
+func listPeopleHandler(reader genealogy.Repository, list func(genealogy.Repository, string, int, int) ([]domain.Person, error)) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID string `json:"tree_id"`
 			Limit  int    `json:"limit"`
+			Offset int    `json:"offset"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
@@ -123,7 +137,10 @@ func listPeopleHandler(reader genealogy.Repository, list func(genealogy.Reposito
 		if args.TreeID == "" {
 			return framework.NewToolResultError("tree_id is required"), nil
 		}
-		people, err := list(reader, args.TreeID, args.Limit)
+		if args.Offset < 0 {
+			return framework.NewToolResultError("offset must not be negative"), nil
+		}
+		people, err := list(reader, args.TreeID, args.Limit, args.Offset)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
