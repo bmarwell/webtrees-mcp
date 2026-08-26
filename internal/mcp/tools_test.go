@@ -35,12 +35,16 @@ func TestPersonResultMapsDomainToTransportDTO(t *testing.T) {
 		Name:      domain.Name{Given: "Ada", Surname: "Mayer"},
 		BirthDate: "1982",
 		Relatives: []domain.Relative{{PersonID: "I45", Relationship: "spouse"}},
+		Events:    []domain.Event{{Type: "birt", Date: &domain.Date{Raw: "ABT 1982", Precision: "about"}, Place: "Stadthagen"}},
 	})
 	if result.ID != "I44" || result.Name.Given != "Ada" || result.BirthDate != "1982" {
 		t.Fatalf("unexpected mapped person: %+v", result)
 	}
 	if len(result.Relatives) != 1 || result.Relatives[0].PersonID != "I45" {
 		t.Fatalf("unexpected mapped relatives: %+v", result.Relatives)
+	}
+	if len(result.Events) != 1 || result.Events[0].Date == nil || result.Events[0].Date.Precision != "about" || result.Events[0].Place != "Stadthagen" {
+		t.Fatalf("unexpected mapped events: %+v", result.Events)
 	}
 }
 

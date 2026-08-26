@@ -13,15 +13,46 @@ type Relative struct {
 	Relationship string
 }
 
+// FamilyLink connects an individual to an individual-as-child or
+// individual-as-spouse family record.
+type FamilyLink struct {
+	FamilyID string
+	Role     string
+}
+
+// Date preserves the source text and its explicit GEDCOM qualifier.
+type Date struct {
+	Raw       string
+	Precision string
+}
+
+type Source struct {
+	ID    string
+	Title string
+}
+
+type Event struct {
+	Type    string
+	Date    *Date
+	Place   string
+	Value   string
+	Notes   []string
+	Sources []Source
+}
+
 // Person is the business representation of an individual.
 type Person struct {
-	ID         string
-	Name       Name
-	Sex        string
-	BirthDate  string
-	DeathDate  string
-	Occupation string
-	Relatives  []Relative
+	ID          string
+	Name        Name
+	Sex         string
+	BirthDate   string
+	DeathDate   string
+	Occupation  string
+	Relatives   []Relative
+	FamilyLinks []FamilyLink
+	Events      []Event
+	Notes       []string
+	Sources     []Source
 }
 
 type Tree struct {
@@ -34,4 +65,7 @@ type Family struct {
 	ID       string
 	Parents  []Relative
 	Children []Relative
+	Events   []Event
+	Notes    []string
+	Sources  []Source
 }

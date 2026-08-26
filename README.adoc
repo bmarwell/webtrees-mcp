@@ -14,7 +14,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 
 * Runs over the MCP stdio transport for use by local agent clients.
 * Exposes `get_person`, `search_persons`, `get_family`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
-* Parses names and birth dates from webtrees GEDCOM records.
+* Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
 
@@ -145,7 +145,17 @@ claim to have successful structured data.
     "given": "Ada",
     "surname": "Lovelace"
   },
-  "birth_date": "10 DEC 1815"
+  "birth_date": "10 DEC 1815",
+  "events": [
+    {
+      "type": "birt",
+      "date": {
+        "raw": "10 DEC 1815",
+        "precision": "exact"
+      },
+      "place": "London"
+    }
+  ]
 }
 ----
 
