@@ -46,6 +46,16 @@ Preserve missing, uncertain, and partial facts explicitly. Never turn a
 probable death, inferred relationship, or ranking based on incomplete dates
 into an established fact.
 
+## Research tool hints
+
+When adding or changing a research tool, keep the human-readable result short:
+state what was found, how it was ordered, and any important exclusions or
+limitations. Put the complete machine-readable result in `structuredContent`
+using a named object, not a JSON string or top-level array. Include stable IDs
+and evidence fields so an agent can verify a lead with a follow-up tool. Keep
+counts, bounds, confidence, missing facts, and date policies explicit; a
+research lead is not an established fact.
+
 ## Genealogy terminology
 
 - *Direct name hit*: the search query matches a primary, birth/maiden,
