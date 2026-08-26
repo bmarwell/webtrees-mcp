@@ -71,7 +71,7 @@ type familyOutputDTO struct {
 }
 
 type treeOutput struct {
-	ID    string `json:"tree_id"`
+	ID    int    `json:"tree_id"`
 	Name  string `json:"name,omitempty"`
 	Title string `json:"title,omitempty"`
 }

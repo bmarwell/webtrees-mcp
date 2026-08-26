@@ -48,6 +48,12 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		if tool.Tool.OutputSchema.Type != "object" {
 			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)
 		}
+		if name != "list_tree_ids" {
+			treeSchema, ok := tool.Tool.InputSchema.Properties["tree_id"].(map[string]any)
+			if !ok || treeSchema["type"] != "integer" || treeSchema["minimum"] != 1 {
+				t.Errorf("tool %q must declare positive numeric tree_id: %#v", name, tool.Tool.InputSchema.Properties["tree_id"])
+			}
+		}
 	}
 	searchTool := mcpServer.GetTool("search_persons")
 	for _, field := range []string{"people", "total_count", "has_more", "limit", "offset"} {
@@ -140,8 +146,8 @@ func TestCollectionResultsUseObjectShapes(t *testing.T) {
 	if len(people.People) != 1 || people.People[0].ID != "I44" {
 		t.Fatalf("unexpected people result: %+v", people)
 	}
-	trees := treesResult([]domain.Tree{{ID: "tree-1"}})
-	if len(trees.Trees) != 1 || trees.Trees[0].ID != "tree-1" {
+	trees := treesResult([]domain.Tree{{ID: 42}})
+	if len(trees.Trees) != 1 || trees.Trees[0].ID != 42 {
 		t.Fatalf("unexpected trees result: %+v", trees)
 	}
 

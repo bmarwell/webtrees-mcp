@@ -374,7 +374,7 @@ func (r *Reader) ListTrees(limit, offset int) ([]domain.Tree, error) {
 	defer rows.Close()
 	var trees []domain.Tree
 	type treeRow struct {
-		id    string
+		id    int
 		name  string
 		title string
 	}

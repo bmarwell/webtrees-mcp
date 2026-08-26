@@ -68,7 +68,7 @@ type PersonSearchResult struct {
 }
 
 type Tree struct {
-	ID    string
+	ID    int
 	Name  string
 	Title string
 }

@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"webtrees-mcp/internal/domain"
@@ -16,14 +17,14 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	tool := framework.NewTool("get_person",
 		framework.WithDescription("Use when you have an exact person_id and need verified person details. Do not use for name searches or unverified identity; call search_persons first. Chain the returned person_id here. Read content as the complete factual result; do not infer omitted facts."),
 		framework.WithOutputSchema[personResultDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42; do not pass a tree name or the literal default")),
 		framework.WithString("person_id", framework.Required(), framework.Description("Individual xref, for example I1")),
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
 		framework.WithDescription("Use when you need research leads by indexed name, sex, or birth/death year bounds. Required: tree_id and surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). Do not use as a raw GEDCOM search or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person. Read content as the factual lead record."),
 		framework.WithOutputSchema[searchPeopleResultDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
+		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42; do not pass a tree name or the literal default")),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
 		framework.WithString("given_name", framework.MinLength(1), framework.Description("Optional given-name fragment, matched against the indexed given-name field")),
 		framework.WithString("sex", framework.MinLength(1), framework.Description("Optional indexed sex value, for example F or M")),
@@ -39,20 +40,20 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	s.AddTool(framework.NewTool("get_family",
 		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not infer relationships from surnames or missing links. Chain returned person_id values into get_person."),
 		framework.WithOutputSchema[familyOutputDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("relationship_path",
 		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person or get_family."),
 		framework.WithOutputSchema[relationshipPathResultDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
 		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
 	), relationshipPathHandler(reader))
 	s.AddTool(framework.NewTool("search_events",
 		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person for full evidence."),
 		framework.WithOutputSchema[eventSearchResultsDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+		framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 		framework.WithString("event_type", framework.Description("GEDCOM event type, for example BIRT, DEAT, or MARR")),
 		framework.WithString("from_date", framework.Description("Inclusive lower date; preferred YYYY-MM-DD, also YYYY, YYYY-MM, or common GEDCOM/text dates")),
 		framework.WithString("to_date", framework.Description("Inclusive upper date; preferred YYYY-MM-DD, also YYYY, YYYY-MM, or common GEDCOM/text dates")),
@@ -79,7 +80,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	} {
 		s.AddTool(framework.NewTool(spec.name, framework.WithDescription(spec.desc),
 			framework.WithOutputSchema[peopleResultDTO](),
-			framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
+			framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
 			framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
 			framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
 		), listPeopleHandler(reader, spec.fn))
@@ -89,7 +90,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 func searchEventsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID    string `json:"tree_id"`
+			TreeID    int    `json:"tree_id"`
 			EventType string `json:"event_type"`
 			FromDate  string `json:"from_date"`
 			ToDate    string `json:"to_date"`
@@ -100,13 +101,13 @@ func searchEventsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" {
-			return framework.NewToolResultError("tree_id is required"), nil
+		if args.TreeID < 1 {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID"), nil
 		}
 		if args.Offset < 0 {
 			return framework.NewToolResultError("offset must not be negative"), nil
 		}
-		events, err := reader.SearchEvents(args.TreeID, args.EventType, args.FromDate, args.ToDate, args.Place, args.Limit, args.Offset)
+		events, err := reader.SearchEvents(strconv.Itoa(args.TreeID), args.EventType, args.FromDate, args.ToDate, args.Place, args.Limit, args.Offset)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -117,17 +118,17 @@ func searchEventsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 func relationshipPathHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID       string `json:"tree_id"`
+			TreeID       int    `json:"tree_id"`
 			FromPersonID string `json:"from_person_id"`
 			ToPersonID   string `json:"to_person_id"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" || args.FromPersonID == "" || args.ToPersonID == "" {
-			return framework.NewToolResultError("tree_id, from_person_id, and to_person_id are required"), nil
+		if args.TreeID < 1 || args.FromPersonID == "" || args.ToPersonID == "" {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID; from_person_id and to_person_id are required"), nil
 		}
-		path, found, err := genealogy.FindRelationshipPath(reader, args.TreeID, args.FromPersonID, args.ToPersonID)
+		path, found, err := genealogy.FindRelationshipPath(reader, strconv.Itoa(args.TreeID), args.FromPersonID, args.ToPersonID)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -164,7 +165,7 @@ func eventSearchSummary(events []domain.EventSearchResult) string {
 func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID          string `json:"tree_id"`
+			TreeID          int    `json:"tree_id"`
 			Surname         string `json:"surname"`
 			GivenName       string `json:"given_name"`
 			Sex             string `json:"sex"`
@@ -180,10 +181,9 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		args.TreeID = strings.TrimSpace(args.TreeID)
 		args.Surname = strings.TrimSpace(args.Surname)
-		if args.TreeID == "" {
-			return framework.NewToolResultError("tree_id must not be blank"), nil
+		if args.TreeID < 1 {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID"), nil
 		}
 		if args.Surname == "" {
 			return framework.NewToolResultError("surname must not be blank"), nil
@@ -210,7 +210,7 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 			return framework.NewToolResultError("death_year_min must not be greater than death_year_max"), nil
 		}
 		searchResults, err := reader.SearchPersons(genealogy.PersonSearchCriteria{
-			TreeID: args.TreeID, Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex, MatchMode: args.MatchMode,
+			TreeID: strconv.Itoa(args.TreeID), Surname: args.Surname, GivenName: args.GivenName, Sex: args.Sex, MatchMode: args.MatchMode,
 			BirthYearMin: args.BirthYearMin, BirthYearMax: args.BirthYearMax,
 			DeathYearMin: args.DeathYearMin, DeathYearMax: args.DeathYearMax,
 			IncludeIndirect: args.IncludeIndirect, Limit: args.Limit, Offset: args.Offset,
@@ -226,16 +226,16 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 func getFamilyHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID   string `json:"tree_id"`
+			TreeID   int    `json:"tree_id"`
 			FamilyID string `json:"family_id"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" || args.FamilyID == "" {
-			return framework.NewToolResultError("tree_id and family_id are required"), nil
+		if args.TreeID < 1 || args.FamilyID == "" {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID and family_id is required"), nil
 		}
-		family, err := reader.GetFamily(args.TreeID, args.FamilyID)
+		family, err := reader.GetFamily(strconv.Itoa(args.TreeID), args.FamilyID)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -266,20 +266,20 @@ func listTreesHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 func listPeopleHandler(reader genealogy.Repository, list func(genealogy.Repository, string, int, int) ([]domain.Person, error)) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID string `json:"tree_id"`
-			Limit  int    `json:"limit"`
-			Offset int    `json:"offset"`
+			TreeID int `json:"tree_id"`
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" {
-			return framework.NewToolResultError("tree_id is required"), nil
+		if args.TreeID < 1 {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID"), nil
 		}
 		if args.Offset < 0 {
 			return framework.NewToolResultError("offset must not be negative"), nil
 		}
-		people, err := list(reader, args.TreeID, args.Limit, args.Offset)
+		people, err := list(reader, strconv.Itoa(args.TreeID), args.Limit, args.Offset)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -294,16 +294,16 @@ func structuredResult(value any, summary string) (*framework.CallToolResult, err
 func getPersonHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(ctx context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
-			TreeID   string `json:"tree_id"`
+			TreeID   int    `json:"tree_id"`
 			PersonID string `json:"person_id"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" || args.PersonID == "" {
-			return framework.NewToolResultError("tree_id and person_id are required"), nil
+		if args.TreeID < 1 || args.PersonID == "" {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID and person_id is required"), nil
 		}
-		person, err := reader.GetPerson(args.TreeID, args.PersonID)
+		person, err := reader.GetPerson(strconv.Itoa(args.TreeID), args.PersonID)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
@@ -565,7 +565,7 @@ func treesSummary(trees []domain.Tree) string {
 	}
 	lines := []string{fmt.Sprintf("Trees: %d", len(trees))}
 	for _, tree := range trees {
-		description := "- " + tree.ID
+		description := "- " + strconv.Itoa(tree.ID)
 		if tree.Name != "" {
 			description += "; name: " + tree.Name
 		}

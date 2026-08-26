@@ -130,12 +130,13 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 [source,json]
 ----
 {
-  "tree_id": "tree-id",
+  "tree_id": 42,
   "person_id": "I1"
 }
 ----
 
-`search_persons` requires non-blank string values for `tree_id` and `surname`.
+`search_persons` requires a positive numeric `tree_id` and a non-blank string
+`surname`.
 It also accepts optional indexed `given_name` and `sex` fragments, inclusive
 `birth_year_min`, `birth_year_max`, `death_year_min`, and `death_year_max`
 bounds. `match_mode` controls name matching: `exact` uses indexed equality,
@@ -165,7 +166,7 @@ Date ranges are inclusive; an omitted boundary is unbounded. Year-only index
 entries remain year-precision results, and place matching is a case-insensitive
 substring match rather than an exact normalized-place query.
 
-`list_tree_ids` accepts optional `limit` and `offset` arguments. The born and deceased listing tools accept a `tree_id`, `limit`, and `offset`. Limits default to `10` and are capped at `100`; offsets default to `0`. Tree IDs are ordered ascending, while recent-person lists are ordered by event year descending and person ID ascending as a deterministic tie-breaker. Request the next page by increasing `offset` by the previous `limit`. All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
+`list_tree_ids` accepts optional `limit` and `offset` arguments. The born and deceased listing tools accept a positive numeric `tree_id`, `limit`, and `offset`. Limits default to `10` and are capped at `100`; offsets default to `0`. Tree IDs are numeric database IDs and are ordered ascending, while recent-person lists are ordered by event year descending and person ID ascending as a deterministic tie-breaker. Request the next page by increasing `offset` by the previous `limit`. All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
 
 === Choosing and chaining tools
 
@@ -200,7 +201,7 @@ object shapes in `structuredContent`:
 * `search_events`: `{ "events": [{"person_id", "type", "date", "place"}] }`.
 * `get_family`: an object with `family_id` and optional `parents`, `children`,
   `events`, `notes`, and `sources`.
-* `list_tree_ids`: `{ "trees": [{"tree_id", "name", "title"}] }`.
+* `list_tree_ids`: `{ "trees": [{"tree_id": 42, "name", "title"}] }`.
 
 IDs are stable within a tree. Collection results are named objects rather than
 top-level arrays, so clients can validate them against the published schemas
