@@ -164,26 +164,26 @@ func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 				BirthDate: "1982", DeathDate: "2026", Occupation: "Carpenter",
 				Relatives: []domain.Relative{{PersonID: "I45", Relationship: "spouse"}},
 			},
-			want: "Person: Ada Mayer (I44)\nEvents:\n- BIRT: 1982\n- DEAT: 2026\n- OCCU: Carpenter\nRelatives:\n- I45 (spouse)",
+			want: "Person ID: I44\nName: Ada Mayer\nSex: not recorded\nBirth date: 1982\nDeath date: 2026\nOccupation: Carpenter\nEvents:\n- BIRT:\n  Date: 1982\n  Place: not recorded\n  Value: not recorded\n  Notes: none\n  Sources: none\n- DEAT:\n  Date: 2026\n  Place: not recorded\n  Value: not recorded\n  Notes: none\n  Sources: none\n- OCCU:\n  Date: not recorded\n  Place: not recorded\n  Value: Carpenter\n  Notes: none\n  Sources: none\nAlternate names: none\nRelatives:\n- I45 (spouse)\nFamily links: none\nNotes: none\nSources: none",
 		},
 		{
 			name:   "missing optional fields",
 			person: domain.Person{ID: "I44", Name: domain.Name{Given: "Ada"}},
-			want:   "Person: Ada (I44)",
+			want:   "Person ID: I44\nName: Ada\nSex: not recorded\nBirth date: not recorded\nDeath date: not recorded\nOccupation: not recorded\nEvents: none\nAlternate names: none\nRelatives: none\nFamily links: none\nNotes: none\nSources: none",
 		},
 		{
 			name: "death without birth",
 			person: domain.Person{
 				ID: "I45", Name: domain.Name{Given: "John", Surname: "Doe"}, DeathDate: "2026",
 			},
-			want: "Person: John Doe (I45)\nEvents:\n- DEAT: 2026",
+			want: "Person ID: I45\nName: John Doe\nSex: not recorded\nBirth date: not recorded\nDeath date: 2026\nOccupation: not recorded\nEvents:\n- DEAT:\n  Date: 2026\n  Place: not recorded\n  Value: not recorded\n  Notes: none\n  Sources: none\nAlternate names: none\nRelatives: none\nFamily links: none\nNotes: none\nSources: none",
 		},
 		{
 			name: "relative without relationship",
 			person: domain.Person{
 				ID: "I46", Relatives: []domain.Relative{{PersonID: "I44"}},
 			},
-			want: "Person: Unknown person (I46)\nRelatives:\n- I44",
+			want: "Person ID: I46\nName: Unknown person\nSex: not recorded\nBirth date: not recorded\nDeath date: not recorded\nOccupation: not recorded\nEvents: none\nAlternate names: none\nRelatives:\n- I44\nFamily links: none\nNotes: none\nSources: none",
 		},
 	}
 
@@ -200,25 +200,25 @@ func TestPersonSummaryListsEventsWithTypeAndPlace(t *testing.T) {
 	got := personSummary(domain.Person{
 		ID: "I7", Name: domain.Name{Given: "Casey", Surname: "Example"},
 		Events: []domain.Event{
-			{Type: "birt", Date: &domain.Date{Raw: "1 JAN 1900"}, Place: "Exampletown"},
+			{Type: "birt", Date: &domain.Date{Raw: "1 JAN 1900"}, Place: "Exampletown", Value: "born at home", Notes: []string{"Family Bible"}, Sources: []domain.Source{{ID: "S1", Title: "Birth record"}}},
 			{Type: "even", Value: "joined an association"},
 		},
 	})
-	want := "Person: Casey Example (I7)\nEvents:\n- BIRT: 1 JAN 1900 in Exampletown\n- EVEN: joined an association"
+	want := "Person ID: I7\nName: Casey Example\nSex: not recorded\nBirth date: not recorded\nDeath date: not recorded\nOccupation: not recorded\nEvents:\n- BIRT:\n  Date: 1 JAN 1900\n  Place: Exampletown\n  Value: born at home\n  Notes:\n  - Family Bible\n  Sources:\n  - S1 (Birth record)\n- EVEN:\n  Date: not recorded\n  Place: not recorded\n  Value: joined an association\n  Notes: none\n  Sources: none\nAlternate names: none\nRelatives: none\nFamily links: none\nNotes: none\nSources: none"
 	if got != want {
 		t.Errorf("personSummary() = %q, want %q", got, want)
 	}
 }
 
 func TestFamilyAndTreeSummariesHandleOptionalData(t *testing.T) {
-	if got := familySummary(domain.Family{ID: "F1"}); got != "Family: F1" {
+	if got := familySummary(domain.Family{ID: "F1"}); got != "Family ID: F1\nParents: none\nChildren: none\nEvents: none\nNotes: none\nSources: none" {
 		t.Errorf("familySummary() = %q", got)
 	}
 	if got := familySummary(domain.Family{
 		ID:       "F1",
 		Parents:  []domain.Relative{{PersonID: "I1"}, {PersonID: "I2"}},
 		Children: []domain.Relative{{PersonID: "I3"}, {PersonID: "I4"}},
-	}); got != "Family: F1\nParents:\n- I1\n- I2\nChildren:\n- I3\n- I4" {
+	}); got != "Family ID: F1\nParents:\n- I1\n- I2\nChildren:\n- I3\n- I4\nEvents: none\nNotes: none\nSources: none" {
 		t.Errorf("familySummary() = %q", got)
 	}
 	if got := treesSummary(nil); got != "Trees: none found." {

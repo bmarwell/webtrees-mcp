@@ -310,20 +310,22 @@ func personSummary(person domain.Person) string {
 	if name == "" {
 		name = "Unknown person"
 	}
-	lines := []string{fmt.Sprintf("Person: %s (%s)", name, person.ID)}
-	eventLines := personEventSummaryLines(person)
-	if len(eventLines) > 0 {
-		lines = append(lines, "Events:")
-		lines = append(lines, eventLines...)
+	lines := []string{
+		"Person ID: " + person.ID,
+		"Name: " + name,
+		"Sex: " + valueOrNotRecorded(person.Sex),
+		"Birth date: " + valueOrNotRecorded(person.BirthDate),
+		"Death date: " + valueOrNotRecorded(person.DeathDate),
+		"Occupation: " + valueOrNotRecorded(person.Occupation),
 	}
-	if person.Sex != "" {
-		lines = append(lines, "Sex: "+person.Sex)
-	}
+	lines = append(lines, personEventSummaryLines(person)...)
 	if len(person.Names) > 1 {
 		lines = append(lines, "Alternate names:")
 		for _, alternate := range person.Names[1:] {
 			lines = append(lines, "- "+displayNameValue(alternate))
 		}
+	} else {
+		lines = append(lines, "Alternate names: none")
 	}
 	if len(person.Relatives) > 0 {
 		lines = append(lines, "Relatives:")
@@ -334,18 +336,24 @@ func personSummary(person domain.Person) string {
 			}
 			lines = append(lines, "- "+description)
 		}
+	} else {
+		lines = append(lines, "Relatives: none")
 	}
 	if len(person.FamilyLinks) > 0 {
 		lines = append(lines, "Family links:")
 		for _, link := range person.FamilyLinks {
 			lines = append(lines, "- "+link.FamilyID+" ("+link.Role+")")
 		}
+	} else {
+		lines = append(lines, "Family links: none")
 	}
 	if len(person.Notes) > 0 {
 		lines = append(lines, "Notes:")
 		for _, note := range person.Notes {
 			lines = append(lines, "- "+note)
 		}
+	} else {
+		lines = append(lines, "Notes: none")
 	}
 	if len(person.Sources) > 0 {
 		lines = append(lines, "Sources:")
@@ -356,12 +364,21 @@ func personSummary(person domain.Person) string {
 			}
 			lines = append(lines, "- "+line)
 		}
+	} else {
+		lines = append(lines, "Sources: none")
 	}
 	return strings.Join(lines, "\n")
 }
 
+func valueOrNotRecorded(value string) string {
+	if value == "" {
+		return "not recorded"
+	}
+	return value
+}
+
 func personEventSummaryLines(person domain.Person) []string {
-	lines := make([]string, 0, len(person.Events)+3)
+	lines := []string{"Events:"}
 	hasBirth, hasDeath, hasOccupation := false, false, false
 	for _, event := range person.Events {
 		tag := strings.ToUpper(event.Type)
@@ -374,16 +391,52 @@ func personEventSummaryLines(person domain.Person) []string {
 		if tag == "OCCU" {
 			hasOccupation = true
 		}
-		lines = append(lines, eventSummaryLine(event))
+		lines = appendEventSummaryLines(lines, event)
 	}
 	if person.BirthDate != "" && !hasBirth {
-		lines = append(lines, "- BIRT: "+person.BirthDate)
+		date := person.BirthDate
+		lines = appendEventSummaryLines(lines, domain.Event{Type: "BIRT", Date: &domain.Date{Raw: date}})
 	}
 	if person.DeathDate != "" && !hasDeath {
-		lines = append(lines, "- DEAT: "+person.DeathDate)
+		lines = appendEventSummaryLines(lines, domain.Event{Type: "DEAT", Date: &domain.Date{Raw: person.DeathDate}})
 	}
 	if person.Occupation != "" && !hasOccupation {
-		lines = append(lines, "- OCCU: "+person.Occupation)
+		lines = appendEventSummaryLines(lines, domain.Event{Type: "OCCU", Value: person.Occupation})
+	}
+	if len(lines) == 1 {
+		return []string{"Events: none"}
+	}
+	return lines
+}
+
+func appendEventSummaryLines(lines []string, event domain.Event) []string {
+	date, value := "not recorded", "not recorded"
+	if event.Date != nil {
+		date = event.Date.Raw
+	}
+	if event.Value != "" {
+		value = event.Value
+	}
+	lines = append(lines, "- "+strings.ToUpper(event.Type)+":", "  Date: "+date, "  Place: "+valueOrNotRecorded(event.Place), "  Value: "+value)
+	if len(event.Notes) == 0 {
+		lines = append(lines, "  Notes: none")
+	} else {
+		lines = append(lines, "  Notes:")
+		for _, note := range event.Notes {
+			lines = append(lines, "  - "+note)
+		}
+	}
+	if len(event.Sources) == 0 {
+		lines = append(lines, "  Sources: none")
+	} else {
+		lines = append(lines, "  Sources:")
+		for _, source := range event.Sources {
+			line := source.ID
+			if source.Title != "" {
+				line += " (" + source.Title + ")"
+			}
+			lines = append(lines, "  - "+line)
+		}
 	}
 	return lines
 }
@@ -425,44 +478,52 @@ func peopleSummary(people []domain.Person, prefix string) string {
 }
 
 func familySummary(family domain.Family) string {
-	lines := []string{fmt.Sprintf("Family: %s", family.ID)}
+	lines := []string{"Family ID: " + family.ID}
 	if len(family.Parents) > 0 {
 		lines = append(lines, "Parents:")
 		for _, parent := range family.Parents {
 			lines = append(lines, "- "+parent.PersonID)
 		}
+	} else {
+		lines = append(lines, "Parents: none")
 	}
 	if len(family.Children) > 0 {
 		lines = append(lines, "Children:")
 		for _, child := range family.Children {
 			lines = append(lines, "- "+child.PersonID)
 		}
+	} else {
+		lines = append(lines, "Children: none")
 	}
 	if len(family.Events) > 0 {
 		lines = append(lines, "Events:")
 		for _, event := range family.Events {
-			lines = append(lines, eventSummaryLine(event))
+			lines = appendEventSummaryLines(lines, event)
 		}
+	} else {
+		lines = append(lines, "Events: none")
+	}
+	if len(family.Notes) > 0 {
+		lines = append(lines, "Notes:")
+		for _, note := range family.Notes {
+			lines = append(lines, "- "+note)
+		}
+	} else {
+		lines = append(lines, "Notes: none")
+	}
+	if len(family.Sources) > 0 {
+		lines = append(lines, "Sources:")
+		for _, source := range family.Sources {
+			line := source.ID
+			if source.Title != "" {
+				line += " (" + source.Title + ")"
+			}
+			lines = append(lines, "- "+line)
+		}
+	} else {
+		lines = append(lines, "Sources: none")
 	}
 	return strings.Join(lines, "\n")
-}
-
-func eventSummaryLine(event domain.Event) string {
-	tag := strings.ToUpper(event.Type)
-	value := event.Value
-	if event.Date != nil {
-		value = event.Date.Raw
-	}
-	if event.Place != "" {
-		if value != "" {
-			value += " in "
-		}
-		value += event.Place
-	}
-	if value == "" {
-		value = "(no details recorded)"
-	}
-	return "- " + tag + ": " + value
 }
 
 func relativeIDs(relatives []domain.Relative) []string {
