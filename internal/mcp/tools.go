@@ -21,11 +21,13 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need to find people from a surname or name fragment. Direct primary, birth, maiden, married, and alternate-name matches are returned by default; set include_indirect to true only when investigating broad GEDCOM-record matches. Chain selected person IDs into get_person for verified detail."),
+		framework.WithDescription("Use when you need to find people from a surname or name fragment. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic limit/offset pagination. Set include_indirect to true only when investigating broad record matches. Chain selected person IDs into get_person for verified detail."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.Description("Surname or part of a surname")),
 		framework.WithBoolean("include_indirect", framework.Description("Include records where the query matches outside a name field")),
+		framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
+		framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
 	), searchPersonsHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
 		framework.WithDescription("Use when you have an exact family_id and need its parent/child links, family events, notes, or sources. Chain the returned person IDs into get_person; do not infer relationships from surnames."),
@@ -65,6 +67,8 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 			TreeID          string `json:"tree_id"`
 			Surname         string `json:"surname"`
 			IncludeIndirect bool   `json:"include_indirect"`
+			Limit           int    `json:"limit"`
+			Offset          int    `json:"offset"`
 		}
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
@@ -72,7 +76,10 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if args.TreeID == "" || args.Surname == "" {
 			return framework.NewToolResultError("tree_id and surname are required"), nil
 		}
-		results, err := reader.SearchPersons(args.TreeID, args.Surname, args.IncludeIndirect)
+		if args.Offset < 0 {
+			return framework.NewToolResultError("offset must not be negative"), nil
+		}
+		results, err := reader.SearchPersons(args.TreeID, args.Surname, args.IncludeIndirect, args.Limit, args.Offset)
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}

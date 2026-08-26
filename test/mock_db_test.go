@@ -57,7 +57,7 @@ func TestSearchPersonsExcludesIndirectHitsByDefault(t *testing.T) {
 		AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/").
 		AddRow("I2", "0 @I2@ INDI\n1 NAME Bruno /Schmidt/\n1 OCCU Mayer")
 	mock.ExpectQuery(query).WithArgs("tree", "%Mayer%").WillReturnRows(rows)
-	people, err := reader.SearchPersons("tree", "Mayer", false)
+	people, err := reader.SearchPersons("tree", "Mayer", false, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestSearchPersonsExcludesIndirectHitsByDefault(t *testing.T) {
 	mock.ExpectQuery(query).WithArgs("tree", "%Mayer%").WillReturnRows(sqlmock.NewRows([]string{"i_id", "i_gedcom"}).
 		AddRow("I1", "0 @I1@ INDI\n1 NAME Ada /Mayer/").
 		AddRow("I2", "0 @I2@ INDI\n1 NAME Bruno /Schmidt/\n1 OCCU Mayer"))
-	people, err = reader.SearchPersons("tree", "Mayer", true)
+	people, err = reader.SearchPersons("tree", "Mayer", true, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

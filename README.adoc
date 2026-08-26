@@ -127,9 +127,11 @@ The `protocolVersion`, `capabilities`, and `clientInfo` fields belong to `initia
 }
 ----
 
-`search_persons` accepts `tree_id` and `surname`, and returns direct name
-matches by default. Set `include_indirect` to `true` to include records where
-the query occurs elsewhere in the GEDCOM record; those results are marked with
+`search_persons` accepts `tree_id`, `surname`, and optional `limit` and `offset`
+(default `10` and `0`; the limit is capped at `100`). It ranks direct name
+matches before indirect record matches, with person ID as the deterministic
+tie-breaker. Set `include_indirect` to `true` to include records where the
+query occurs elsewhere in the GEDCOM record; those results are marked with
 `match.direct_hit: false` and should normally be deprioritized by an agent.
 `get_family` accepts `tree_id` and `family_id`, returning parent and child links
 without embedding duplicate person objects.

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"webtrees-mcp/internal/domain"
+	"webtrees-mcp/internal/genealogy"
 )
 
 // GetPerson reads one individual. The table name is validated when Reader is
@@ -20,14 +21,16 @@ func (r *Reader) GetPerson(treeID, xref string) (*domain.Person, error) {
 	return &person, nil
 }
 
-func (r *Reader) SearchPersons(treeID, surname string, includeIndirect bool) ([]domain.PersonSearchResult, error) {
+func (r *Reader) SearchPersons(treeID, surname string, includeIndirect bool, limit, offset int) ([]domain.PersonSearchResult, error) {
+	limit, offset = genealogy.NormalizePage(limit, offset)
+	pageEnd := offset + limit
 	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ? AND i_gedcom LIKE ? ORDER BY i_id", r.prefix)
 	rows, err := r.db.Query(query, treeID, "%"+surname+"%")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var people []domain.PersonSearchResult
+	people := make([]domain.PersonSearchResult, 0, pageEnd)
 	for rows.Next() {
 		var id, raw string
 		if err := rows.Scan(&id, &raw); err != nil {
@@ -39,8 +42,23 @@ func (r *Reader) SearchPersons(treeID, surname string, includeIndirect bool) ([]
 			continue
 		}
 		people = append(people, result)
+		sort.Slice(people, func(i, j int) bool {
+			if people[i].Match.DirectHit != people[j].Match.DirectHit {
+				return people[i].Match.DirectHit
+			}
+			return people[i].Person.ID < people[j].Person.ID
+		})
+		if len(people) > pageEnd {
+			people = people[:pageEnd]
+		}
 	}
-	return people, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if offset >= len(people) {
+		return []domain.PersonSearchResult{}, nil
+	}
+	return people[offset:], nil
 }
 
 func searchMatch(person domain.Person, query string) domain.SearchMatch {
@@ -85,7 +103,7 @@ func (r *Reader) GetFamily(treeID, xref string) (*domain.Family, error) {
 
 func (r *Reader) ListTrees(limit, offset int) ([]domain.Tree, error) {
 	query := fmt.Sprintf("SELECT gedcom_id, gedcom_name, title FROM %s_gedcom ORDER BY gedcom_id LIMIT ? OFFSET ?", r.prefix)
-	limit, offset = normalizePage(limit, offset)
+	limit, offset = genealogy.NormalizePage(limit, offset)
 	rows, err := r.db.Query(query, limit, offset)
 	if err != nil {
 		return nil, err
@@ -116,7 +134,7 @@ func (r *Reader) ListRecentlyDeceased(treeID string, limit, offset int) ([]domai
 }
 
 func (r *Reader) listByEvent(treeID string, limit, offset int, born bool) ([]domain.Person, error) {
-	limit, offset = normalizePage(limit, offset)
+	limit, offset = genealogy.NormalizePage(limit, offset)
 	query := fmt.Sprintf("SELECT i_id, i_gedcom FROM %s_individuals WHERE i_file = ?", r.prefix)
 	rows, err := r.db.Query(query, treeID)
 	if err != nil {
@@ -164,24 +182,6 @@ func (r *Reader) listByEvent(treeID string, limit, offset int, born bool) ([]dom
 		people = append(people, item.person)
 	}
 	return people, nil
-}
-
-const (
-	defaultPageSize = 10
-	maxPageSize     = 100
-)
-
-func normalizePage(limit, offset int) (int, int) {
-	if limit < 1 {
-		limit = defaultPageSize
-	}
-	if limit > maxPageSize {
-		limit = maxPageSize
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return limit, offset
 }
 
 func gedcomYear(date string) int {

@@ -50,7 +50,7 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
 		t.Error("search_persons lacks include_indirect input metadata")
 	}
-	for _, name := range []string{"list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"search_persons", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		for _, argument := range []string{"limit", "offset"} {
 			if _, ok := tool.Tool.InputSchema.Properties[argument]; !ok {
