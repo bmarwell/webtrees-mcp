@@ -2,9 +2,11 @@ package mcp
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	framework "github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"webtrees-mcp/internal/domain"
 )
 
@@ -26,6 +28,27 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 	content, ok := result.Content[0].(framework.TextContent)
 	if !ok || content.Text != "Found Ada." {
 		t.Fatalf("unexpected content: %#v", result.Content[0])
+	}
+}
+
+func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
+	mcpServer := server.NewMCPServer("test", "1.0")
+	RegisterTools(mcpServer, nil)
+	for _, name := range []string{"get_person", "search_persons", "get_family", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+		tool := mcpServer.GetTool(name)
+		if tool == nil {
+			t.Fatalf("tool %q was not registered", name)
+		}
+		if !strings.Contains(tool.Tool.Description, "Use when") {
+			t.Errorf("tool %q lacks selection guidance: %q", name, tool.Tool.Description)
+		}
+		if tool.Tool.OutputSchema.Type != "object" {
+			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)
+		}
+	}
+	searchTool := mcpServer.GetTool("search_persons")
+	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
+		t.Error("search_persons lacks include_indirect input metadata")
 	}
 }
 

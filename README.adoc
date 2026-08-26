@@ -128,6 +128,24 @@ without embedding duplicate person objects.
 
 `list_tree_ids` takes no arguments. The born and deceased listing tools accept a `tree_id` and optional `limit` (default `10`). All people returned include parsed identifying details where available. Relative entries are intentionally links only, containing `person_id` and optional `url` and `relationship` fields; they do not embed another person object.
 
+=== Choosing and chaining tools
+
+Use `list_tree_ids` first when the tree ID is unknown. Use `search_persons`
+when starting from a name; it returns direct name matches by default. Set
+`include_indirect` only when investigating broad GEDCOM-record matches, and
+check each result's `match.direct_hit` before using it. Chain a selected
+`person_id` into `get_person` for complete event, family-link, note, and
+source detail. Use `get_family` when a family ID is known, then chain its
+parent and child IDs into `get_person`. The recent-birth and recent-death
+tools are rankings by parsed year, not proof that the event is historically
+the latest; inspect the detailed person events before making that claim.
+
+Every successful tool result has a concise human-readable `content` summary
+and an object-shaped `structuredContent` value matching the tool's advertised
+output schema. Collection results are wrapped in `people` or `trees`. Error
+results use diagnostic `content` and should not be treated as successful
+structured data. Missing or uncertain facts must be reported as such.
+
 It returns JSON in this shape:
 
 Tool results carry the native payload in `structuredContent` and a concise,

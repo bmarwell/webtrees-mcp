@@ -14,37 +14,37 @@ import (
 
 func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	tool := framework.NewTool("get_person",
-		framework.WithDescription("Retrieve one individual from a Webtrees tree."),
+		framework.WithDescription("Use when you have an exact person_id and need that person's dates, events, alternate names, family links, notes, or sources. Do not use for name searches; call search_persons first and then chain the returned ID here."),
 		framework.WithOutputSchema[personResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("person_id", framework.Required(), framework.Description("Individual xref, for example I1")),
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Find people in a tree by surname."),
+		framework.WithDescription("Use when you need to find people from a surname or name fragment. Direct primary, birth, maiden, married, and alternate-name matches are returned by default; set include_indirect to true only when investigating broad GEDCOM-record matches. Chain selected person IDs into get_person for verified detail."),
 		framework.WithOutputSchema[peopleResultDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("surname", framework.Required(), framework.Description("Surname or part of a surname")),
 		framework.WithBoolean("include_indirect", framework.Description("Include records where the query matches outside a name field")),
 	), searchPersonsHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
-		framework.WithDescription("Retrieve the parent and child links for one family."),
+		framework.WithDescription("Use when you have an exact family_id and need its parent/child links, family events, notes, or sources. Chain the returned person IDs into get_person; do not infer relationships from surnames."),
 		framework.WithOutputSchema[familyOutputDTO](),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader))
 	s.AddTool(framework.NewTool("list_tree_ids",
-		framework.WithDescription("List available Webtrees trees."),
+		framework.WithDescription("Use when the tree_id is unknown or when choosing among multiple trees. Pass the selected tree_id to every subsequent genealogy query."),
 		framework.WithOutputSchema[treesResultDTO]()), listTreesHandler(reader))
 	for _, spec := range []struct {
 		name string
 		desc string
 		fn   func(genealogy.Repository, string, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "List people ordered by the year of their birth.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
+		{"list_recently_born", "Use when looking for the latest recorded births in a tree. Results are ordered by the parsed birth year; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
 			return r.ListRecentlyBorn(treeID, limit)
 		}},
-		{"list_recently_deceased", "List people ordered by the year of their death.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
+		{"list_recently_deceased", "Use when looking for the latest recorded deaths in a tree. Results are ordered by the parsed death year; use get_person for event precision and evidence.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
 			return r.ListRecentlyDeceased(treeID, limit)
 		}},
 	} {
