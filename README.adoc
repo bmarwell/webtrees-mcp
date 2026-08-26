@@ -216,6 +216,15 @@ Events:
 - OCCU: Software Engineer
 ----
 
+The text form is deliberately the primary factual representation for small
+local models (assume at best `qwen2.5:14b-instruct` on a consumer PC). Such
+models may ignore `structuredContent` and may hallucinate facts when a summary
+is incomplete. Every available fact must therefore appear in `content` using
+stable labels and explicit lists. Keep one fact per line, preserve exact and
+uncertain source values, identify stable IDs and GEDCOM tags, and explicitly
+state missing facts or research-lead limitations. Do not replace a list of
+facts with a fluent summary or a count.
+
 Successful tool results always include a JSON-object `structuredContent` value.
 Collection results are wrapped in named fields such as `people` or `trees`
 instead of returning a top-level array, which improves compatibility with
@@ -253,7 +262,7 @@ both a readable summary and the native structured payload:
   "content": [
     {
       "type": "text",
-      "text": "Person \"Ada Mayer\" (I44) was born on 1982 and died on 2026. They worked as Carpenter. Associated people: I45 (spouse), I46 (child), I47 (child)."
+      "text": "Person: Ada Mayer (I44)\nEvents:\n- BIRT: 1982\n- DEAT: 2026\n- OCCU: Carpenter\nAlternate names:\n- Ada Doe (married)\nRelatives:\n- I45 (spouse)\n- I46 (child)\n- I47 (child)"
     }
   ],
   "structuredContent": {
@@ -316,8 +325,8 @@ details that are not part of the returned family data:
 }
 ----
 
-List and search tools use the same pattern. For example, a fictional surname
-search with `include_indirect: true` might return this summary:
+List and search tools use the same pattern. For example, a fictional indexed
+surname search might return this summary:
 
 [source,json]
 ----
@@ -325,7 +334,7 @@ search with `include_indirect: true` might return this summary:
   "content": [
     {
       "type": "text",
-      "text": "Found 2 people matching search \"Mayer\". Person \"Ada Mayer\" (I44) was born on 1982. Person \"Bruno Schmidt\" (I48) has no recorded birth date. They worked as Mayer."
+      "text": "Found 2 people matching search \"Mayer\".\n\nPerson: Ada Mayer (I44)\nEvents:\n- BIRT: 1982\n\nPerson: Bruno Schmidt (I48)\nEvents:\n- OCCU: Mayer"
     }
   ],
   "structuredContent": {

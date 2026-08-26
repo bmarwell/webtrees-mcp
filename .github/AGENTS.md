@@ -55,6 +55,22 @@ test that checks both the generated schema and the structured result shape.
 The human-readable `content` summary should explain the result without
 duplicating its JSON.
 
+`content` is not merely a convenience for clients that ignore
+`structuredContent`: it is the primary factual input for smaller local models
+(assume at best a model such as `qwen2.5:14b-instruct` on a consumer PC). These
+models may not read structured data reliably and are prone to filling gaps with
+hallucinated facts. Therefore, whenever adding or changing a method's output:
+
+- Put every available fact needed to answer the method's question in `content`.
+- Use deterministic labelled fields and explicit lists, with one fact per line;
+  identify stable IDs and GEDCOM event tags directly.
+- Preserve exact source values, including uncertain or partial dates, and
+  state when a fact is missing or a result is only a research lead.
+- Never hide facts in fluent prose, imply a fact that is absent, or replace a
+  complete list with a summary sentence or count.
+- Keep the text concise by removing decoration and repetition, not by dropping
+  evidence. Add tests for the exact text shape whenever output changes.
+
 ## Research tool hints
 
 When adding or changing a research tool, keep the human-readable result short:
