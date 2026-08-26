@@ -237,7 +237,9 @@ search might return this summary:
 == Project layout
 
 * `internal/db` contains the read-only database repository.
-* `internal/model` contains DTOs and the lightweight GEDCOM parser.
+* `internal/domain` contains database- and transport-neutral genealogy entities.
+* `internal/genealogy` defines the repository port used by application code.
+* `internal/db` contains the SQL adapter and lightweight GEDCOM parser.
 * `internal/mcp` maps repository operations to MCP tools.
 * `test` contains sqlmock unit tests and an optional database schema test.
 

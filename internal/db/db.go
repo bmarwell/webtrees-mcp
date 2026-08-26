@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+
+	"webtrees-mcp/internal/genealogy"
 )
 
 var validPrefix = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
@@ -13,6 +15,8 @@ type Reader struct {
 	db     *sql.DB
 	prefix string
 }
+
+var _ genealogy.Repository = (*Reader)(nil)
 
 func NewReader(database *sql.DB, prefix string) (*Reader, error) {
 	if database == nil {

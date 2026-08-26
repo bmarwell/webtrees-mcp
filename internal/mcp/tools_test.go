@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	framework "github.com/mark3labs/mcp-go/mcp"
-	"webtrees-mcp/internal/model"
+	"webtrees-mcp/internal/domain"
 )
 
 func TestStructuredResultUsesStructuredContent(t *testing.T) {
@@ -29,37 +29,52 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 	}
 }
 
+func TestPersonResultMapsDomainToTransportDTO(t *testing.T) {
+	result := personResult(domain.Person{
+		ID:        "I44",
+		Name:      domain.Name{Given: "Ada", Surname: "Mayer"},
+		BirthDate: "1982",
+		Relatives: []domain.Relative{{PersonID: "I45", Relationship: "spouse"}},
+	})
+	if result.ID != "I44" || result.Name.Given != "Ada" || result.BirthDate != "1982" {
+		t.Fatalf("unexpected mapped person: %+v", result)
+	}
+	if len(result.Relatives) != 1 || result.Relatives[0].PersonID != "I45" {
+		t.Fatalf("unexpected mapped relatives: %+v", result.Relatives)
+	}
+}
+
 func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 	tests := []struct {
 		name   string
-		person model.PersonDTO
+		person domain.Person
 		want   string
 	}{
 		{
 			name: "complete",
-			person: model.PersonDTO{
-				ID: "I44", Name: model.NameDTO{Given: "Ada", Surname: "Mayer"},
+			person: domain.Person{
+				ID: "I44", Name: domain.Name{Given: "Ada", Surname: "Mayer"},
 				BirthDate: "1982", DeathDate: "2026", Occupation: "Carpenter",
-				Relatives: []model.RelativeLink{{PersonID: "I45", Relationship: "spouse"}},
+				Relatives: []domain.Relative{{PersonID: "I45", Relationship: "spouse"}},
 			},
 			want: `Person "Ada Mayer" (I44) was born on 1982 and died on 2026. They worked as Carpenter. Associated people: I45 (spouse).`,
 		},
 		{
 			name:   "missing optional fields",
-			person: model.PersonDTO{ID: "I44", Name: model.NameDTO{Given: "Ada"}},
+			person: domain.Person{ID: "I44", Name: domain.Name{Given: "Ada"}},
 			want:   `Person "Ada" (I44) has no recorded birth date.`,
 		},
 		{
 			name: "death without birth",
-			person: model.PersonDTO{
-				ID: "I45", Name: model.NameDTO{Given: "John", Surname: "Doe"}, DeathDate: "2026",
+			person: domain.Person{
+				ID: "I45", Name: domain.Name{Given: "John", Surname: "Doe"}, DeathDate: "2026",
 			},
 			want: `Person "John Doe" (I45) has no recorded birth date and died on 2026.`,
 		},
 		{
 			name: "relative without relationship",
-			person: model.PersonDTO{
-				ID: "I46", Relatives: []model.RelativeLink{{PersonID: "I44"}},
+			person: domain.Person{
+				ID: "I46", Relatives: []domain.Relative{{PersonID: "I44"}},
 			},
 			want: `Person "Unknown person" (I46) has no recorded birth date. Associated people: I44.`,
 		},
@@ -75,13 +90,13 @@ func TestPersonSummaryAddsOptionalPhrases(t *testing.T) {
 }
 
 func TestFamilyAndTreeSummariesHandleOptionalData(t *testing.T) {
-	if got := familySummary(model.FamilyDTO{ID: "F1"}); got != "Family F1." {
+	if got := familySummary(domain.Family{ID: "F1"}); got != "Family F1." {
 		t.Errorf("familySummary() = %q", got)
 	}
-	if got := familySummary(model.FamilyDTO{
+	if got := familySummary(domain.Family{
 		ID:       "F1",
-		Parents:  []model.RelativeLink{{PersonID: "I1"}, {PersonID: "I2"}},
-		Children: []model.RelativeLink{{PersonID: "I3"}, {PersonID: "I4"}},
+		Parents:  []domain.Relative{{PersonID: "I1"}, {PersonID: "I2"}},
+		Children: []domain.Relative{{PersonID: "I3"}, {PersonID: "I4"}},
 	}); got != "Family F1 has parents I1 and I2; children: I3, I4." {
 		t.Errorf("familySummary() = %q", got)
 	}

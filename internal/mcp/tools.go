@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"webtrees-mcp/internal/db"
-	"webtrees-mcp/internal/model"
+	"webtrees-mcp/internal/domain"
+	"webtrees-mcp/internal/genealogy"
 
 	framework "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func RegisterTools(s *server.MCPServer, reader *db.Reader) {
+func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	tool := framework.NewTool("get_person",
 		framework.WithDescription("Retrieve one individual from a Webtrees tree."),
 		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
@@ -34,10 +34,14 @@ func RegisterTools(s *server.MCPServer, reader *db.Reader) {
 	for _, spec := range []struct {
 		name string
 		desc string
-		fn   func(*db.Reader, string, int) ([]model.PersonDTO, error)
+		fn   func(genealogy.Repository, string, int) ([]domain.Person, error)
 	}{
-		{"list_recently_born", "List people ordered by the year of their birth.", (*db.Reader).ListRecentlyBorn},
-		{"list_recently_deceased", "List people ordered by the year of their death.", (*db.Reader).ListRecentlyDeceased},
+		{"list_recently_born", "List people ordered by the year of their birth.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
+			return r.ListRecentlyBorn(treeID, limit)
+		}},
+		{"list_recently_deceased", "List people ordered by the year of their death.", func(r genealogy.Repository, treeID string, limit int) ([]domain.Person, error) {
+			return r.ListRecentlyDeceased(treeID, limit)
+		}},
 	} {
 		s.AddTool(framework.NewTool(spec.name, framework.WithDescription(spec.desc),
 			framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
@@ -46,7 +50,7 @@ func RegisterTools(s *server.MCPServer, reader *db.Reader) {
 	}
 }
 
-func searchPersonsHandler(reader *db.Reader) server.ToolHandlerFunc {
+func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID  string `json:"tree_id"`
@@ -62,11 +66,11 @@ func searchPersonsHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(people, peopleSummary(people, fmt.Sprintf("Found %d people matching surname %q.", len(people), args.Surname)))
+		return structuredResult(personOutputs(people), peopleSummary(people, fmt.Sprintf("Found %d people matching surname %q.", len(people), args.Surname)))
 	}
 }
 
-func getFamilyHandler(reader *db.Reader) server.ToolHandlerFunc {
+func getFamilyHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID   string `json:"tree_id"`
@@ -82,21 +86,21 @@ func getFamilyHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(family, familySummary(*family))
+		return structuredResult(familyOutput(*family), familySummary(*family))
 	}
 }
 
-func listTreesHandler(reader *db.Reader) server.ToolHandlerFunc {
+func listTreesHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(context.Context, framework.CallToolRequest) (*framework.CallToolResult, error) {
 		trees, err := reader.ListTrees()
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(trees, treesSummary(trees))
+		return structuredResult(treeOutputs(trees), treesSummary(trees))
 	}
 }
 
-func listPeopleHandler(reader *db.Reader, list func(*db.Reader, string, int) ([]model.PersonDTO, error)) server.ToolHandlerFunc {
+func listPeopleHandler(reader genealogy.Repository, list func(genealogy.Repository, string, int) ([]domain.Person, error)) server.ToolHandlerFunc {
 	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID string `json:"tree_id"`
@@ -112,7 +116,7 @@ func listPeopleHandler(reader *db.Reader, list func(*db.Reader, string, int) ([]
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(people, peopleSummary(people, fmt.Sprintf("Found %d people.", len(people))))
+		return structuredResult(personOutputs(people), peopleSummary(people, fmt.Sprintf("Found %d people.", len(people))))
 	}
 }
 
@@ -120,7 +124,7 @@ func structuredResult(value any, summary string) (*framework.CallToolResult, err
 	return framework.NewToolResultStructured(value, summary), nil
 }
 
-func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
+func getPersonHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 	return func(ctx context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
 		var args struct {
 			TreeID   string `json:"tree_id"`
@@ -136,11 +140,11 @@ func getPersonHandler(reader *db.Reader) server.ToolHandlerFunc {
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(person, personSummary(*person))
+		return structuredResult(personResult(*person), personSummary(*person))
 	}
 }
 
-func personSummary(person model.PersonDTO) string {
+func personSummary(person domain.Person) string {
 	name := displayName(person)
 	if name == "" {
 		name = "Unknown person"
@@ -186,11 +190,11 @@ func joinPhrases(phrases []string) string {
 	}
 }
 
-func displayName(person model.PersonDTO) string {
+func displayName(person domain.Person) string {
 	return strings.TrimSpace(strings.Join([]string{person.Name.Given, person.Name.Surname}, " "))
 }
 
-func peopleSummary(people []model.PersonDTO, prefix string) string {
+func peopleSummary(people []domain.Person, prefix string) string {
 	if len(people) == 0 {
 		return prefix
 	}
@@ -201,7 +205,7 @@ func peopleSummary(people []model.PersonDTO, prefix string) string {
 	return prefix + " " + strings.Join(summaries, " ")
 }
 
-func familySummary(family model.FamilyDTO) string {
+func familySummary(family domain.Family) string {
 	summary := fmt.Sprintf("Family %s", family.ID)
 	if len(family.Parents) > 0 {
 		parents := relativeIDs(family.Parents)
@@ -216,7 +220,7 @@ func familySummary(family model.FamilyDTO) string {
 	return summary + "."
 }
 
-func relativeIDs(relatives []model.RelativeLink) []string {
+func relativeIDs(relatives []domain.Relative) []string {
 	ids := make([]string, 0, len(relatives))
 	for _, relative := range relatives {
 		ids = append(ids, relative.PersonID)
@@ -224,7 +228,7 @@ func relativeIDs(relatives []model.RelativeLink) []string {
 	return ids
 }
 
-func treesSummary(trees []model.TreeDTO) string {
+func treesSummary(trees []domain.Tree) string {
 	if len(trees) == 0 {
 		return "No trees found."
 	}

@@ -1,8 +1,10 @@
-package model
+package db
 
 import (
 	"regexp"
 	"strings"
+
+	"webtrees-mcp/internal/domain"
 )
 
 var (
@@ -17,10 +19,10 @@ var (
 	chilRE  = regexp.MustCompile(`(?m)^1 CHIL @([^@]+)@`)
 )
 
-// ParseIndividualGEDCOM extracts the small subset of GEDCOM metadata useful to
-// callers. Unknown GEDCOM tags are intentionally ignored.
-func ParseIndividualGEDCOM(id, rawGEDCOM string) PersonDTO {
-	person := PersonDTO{ID: id}
+// parseIndividualGEDCOM translates the database's raw GEDCOM representation
+// into the domain model. The parser is kept private to this adapter.
+func parseIndividualGEDCOM(id, rawGEDCOM string) domain.Person {
+	person := domain.Person{ID: id}
 	if match := nameRE.FindStringSubmatch(rawGEDCOM); len(match) == 3 {
 		person.Name.Given = strings.TrimSpace(match[1])
 		person.Name.Surname = strings.TrimSpace(match[2])
@@ -38,25 +40,25 @@ func ParseIndividualGEDCOM(id, rawGEDCOM string) PersonDTO {
 		person.Occupation = strings.TrimSpace(match[1])
 	}
 	for _, match := range assoRE.FindAllStringSubmatch(rawGEDCOM, -1) {
-		link := RelativeLink{PersonID: match[1]}
+		relative := domain.Relative{PersonID: match[1]}
 		if len(match) == 3 {
-			link.Relationship = strings.TrimSpace(match[2])
+			relative.Relationship = strings.TrimSpace(match[2])
 		}
-		person.Relatives = append(person.Relatives, link)
+		person.Relatives = append(person.Relatives, relative)
 	}
 	return person
 }
 
-func ParseFamilyGEDCOM(id, rawGEDCOM string) FamilyDTO {
-	family := FamilyDTO{ID: id}
+func parseFamilyGEDCOM(id, rawGEDCOM string) domain.Family {
+	family := domain.Family{ID: id}
 	if match := husbRE.FindStringSubmatch(rawGEDCOM); len(match) == 2 {
-		family.Parents = append(family.Parents, RelativeLink{PersonID: match[1], Relationship: "parent"})
+		family.Parents = append(family.Parents, domain.Relative{PersonID: match[1], Relationship: "parent"})
 	}
 	if match := wifeRE.FindStringSubmatch(rawGEDCOM); len(match) == 2 {
-		family.Parents = append(family.Parents, RelativeLink{PersonID: match[1], Relationship: "parent"})
+		family.Parents = append(family.Parents, domain.Relative{PersonID: match[1], Relationship: "parent"})
 	}
 	for _, match := range chilRE.FindAllStringSubmatch(rawGEDCOM, -1) {
-		family.Children = append(family.Children, RelativeLink{PersonID: match[1], Relationship: "child"})
+		family.Children = append(family.Children, domain.Relative{PersonID: match[1], Relationship: "child"})
 	}
 	return family
 }
