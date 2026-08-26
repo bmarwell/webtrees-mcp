@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,6 +53,14 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	if _, ok := searchTool.Tool.InputSchema.Properties["include_indirect"]; !ok {
 		t.Error("search_persons lacks include_indirect input metadata")
 	}
+	limitSchema, ok := searchTool.Tool.InputSchema.Properties["limit"].(map[string]any)
+	if !ok || limitSchema["default"] != 10 || limitSchema["minimum"] != 1 || limitSchema["maximum"] != 100 {
+		t.Errorf("unexpected search_persons limit schema: %#v", searchTool.Tool.InputSchema.Properties["limit"])
+	}
+	offsetSchema, ok := searchTool.Tool.InputSchema.Properties["offset"].(map[string]any)
+	if !ok || offsetSchema["default"] != 0 || offsetSchema["minimum"] != 0 || offsetSchema["maximum"] != 10000 {
+		t.Errorf("unexpected search_persons offset schema: %#v", searchTool.Tool.InputSchema.Properties["offset"])
+	}
 	for _, name := range []string{"search_persons", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		for _, argument := range []string{"limit", "offset"} {
@@ -59,6 +68,33 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 				t.Errorf("%s lacks %s input metadata", name, argument)
 			}
 		}
+	}
+}
+
+func TestSearchPersonsRejectsInvalidInput(t *testing.T) {
+	handler := searchPersonsHandler(nil)
+	for _, test := range []struct {
+		name string
+		args map[string]any
+	}{
+		{name: "blank tree", args: map[string]any{"tree_id": " ", "surname": "Example"}},
+		{name: "blank surname", args: map[string]any{"tree_id": "tree", "surname": "\t"}},
+		{name: "negative limit", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": -1}},
+		{name: "limit too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "limit": 101}},
+		{name: "negative offset", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": -1}},
+		{name: "offset too large", args: map[string]any{"tree_id": "tree", "surname": "Example", "offset": 10001}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := handler(context.Background(), framework.CallToolRequest{
+				Params: framework.CallToolParams{Arguments: test.args},
+			})
+			if err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+			if result == nil || !result.IsError {
+				t.Fatalf("expected an error result, got %#v", result)
+			}
+		})
 	}
 }
 

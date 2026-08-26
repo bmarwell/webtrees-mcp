@@ -21,13 +21,13 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 	)
 	s.AddTool(tool, getPersonHandler(reader))
 	s.AddTool(framework.NewTool("search_persons",
-		framework.WithDescription("Use when you need to find people from a surname or name fragment. Do not treat indirect record matches as verified identity. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic limit/offset pagination. Set include_indirect to true only when investigating broad record matches. Chain selected person IDs into get_person for verified detail."),
+		framework.WithDescription("Use when you need to find people from a surname or name fragment. Required: non-blank tree_id and surname. Optional: include_indirect (boolean, default false), limit (integer, default 10, range 1-100), and offset (integer, default 0, range 0-10000). Do not treat indirect record matches as verified identity. Results rank direct primary, birth, maiden, married, and alternate-name matches before indirect GEDCOM-record matches, and support deterministic pagination. Chain selected person IDs into get_person for verified detail."),
 		framework.WithOutputSchema[peopleResultDTO](),
-		framework.WithString("tree_id", framework.Required(), framework.Description("Webtrees tree ID")),
-		framework.WithString("surname", framework.Required(), framework.Description("Surname or part of a surname")),
-		framework.WithBoolean("include_indirect", framework.Description("Include records where the query matches outside a name field")),
-		framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
-		framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
+		framework.WithString("tree_id", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank webtrees tree ID")),
+		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
+		framework.WithBoolean("include_indirect", framework.DefaultBool(false), framework.Description("Include records where the query matches outside a name field")),
+		framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultPageSize), framework.Min(1), framework.Max(genealogy.MaxPageSize), framework.Description("Maximum people to return (1-100)")),
+		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
 	), searchPersonsHandler(reader))
 	s.AddTool(framework.NewTool("get_family",
 		framework.WithDescription("Use when you have an exact family_id and need its parent/child links, family events, notes, or sources. Chain the returned person IDs into get_person; do not infer relationships from surnames."),
@@ -166,11 +166,19 @@ func searchPersonsHandler(reader genealogy.Repository) server.ToolHandlerFunc {
 		if err := request.BindArguments(&args); err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		if args.TreeID == "" || args.Surname == "" {
-			return framework.NewToolResultError("tree_id and surname are required"), nil
+		args.TreeID = strings.TrimSpace(args.TreeID)
+		args.Surname = strings.TrimSpace(args.Surname)
+		if args.TreeID == "" {
+			return framework.NewToolResultError("tree_id must not be blank"), nil
 		}
-		if args.Offset < 0 {
-			return framework.NewToolResultError("offset must not be negative"), nil
+		if args.Surname == "" {
+			return framework.NewToolResultError("surname must not be blank"), nil
+		}
+		if args.Limit < 0 || args.Limit > genealogy.MaxPageSize {
+			return framework.NewToolResultError(fmt.Sprintf("limit must be between 1 and %d (or omitted)", genealogy.MaxPageSize)), nil
+		}
+		if args.Offset < 0 || args.Offset > genealogy.MaxPageOffset {
+			return framework.NewToolResultError(fmt.Sprintf("offset must be between 0 and %d", genealogy.MaxPageOffset)), nil
 		}
 		results, err := reader.SearchPersons(args.TreeID, args.Surname, args.IncludeIndirect, args.Limit, args.Offset)
 		if err != nil {
