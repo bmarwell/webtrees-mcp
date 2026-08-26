@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person`, `search_persons`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_tree_ids`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -159,6 +159,13 @@ It follows explicit family links for a bounded shortest-path search and returns
 each hop with its `family_id` evidence and relationship kind. A missing path is
 reported with `found: false`; surnames and inferred relationships are not used.
 
+`get_ancestors` and `get_descendants` accept a numeric `tree_id`, a starting
+`person_id`, and optional `max_depth` (default `5`, maximum `20`) and `limit`
+(default `100`, maximum `500`). They traverse only explicit family links and
+return a bounded flat list of people with generation depth, relationship, and
+the `via_family_id` evidence. A `truncated` result means the configured limit
+was reached; it does not mean the line is complete.
+
 `search_events` prefers ISO dates such as `1815-12-10`. It also accepts a year
 (`1815`), year and month (`1815-12`), slash-separated variants, common textual
 dates such as `10 DEC 1815`, and GEDCOM qualifiers such as `ABT` and `BET`.
@@ -201,6 +208,9 @@ object shapes in `structuredContent`:
 * `search_events`: `{ "events": [{"person_id", "type", "date", "place"}] }`.
 * `get_family`: an object with `family_id` and optional `parents`, `children`,
   `events`, `notes`, and `sources`.
+* `get_ancestors` and `get_descendants`: `{ "root_person_id": "I1",
+  "direction": "ancestors", "nodes": [{"person_id", "depth",
+  "via_family_id", "relationship", "person"}], "truncated": false }`.
 * `list_tree_ids`: `{ "trees": [{"tree_id": 42, "name", "title"}] }`.
 
 IDs are stable within a tree. Collection results are named objects rather than

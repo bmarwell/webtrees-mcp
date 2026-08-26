@@ -35,7 +35,7 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0")
 	RegisterTools(mcpServer, nil)
-	for _, name := range []string{"get_person", "search_persons", "get_family", "relationship_path", "search_events", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"get_person", "search_persons", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_tree_ids", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)
@@ -47,6 +47,13 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		}
 		if tool.Tool.OutputSchema.Type != "object" {
 			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)
+		}
+		if name == "get_ancestors" || name == "get_descendants" {
+			for _, field := range []string{"root_person_id", "direction", "nodes", "truncated"} {
+				if _, ok := tool.Tool.OutputSchema.Properties[field]; !ok {
+					t.Errorf("tool %q output schema lacks %s", name, field)
+				}
+			}
 		}
 		if name != "list_tree_ids" {
 			treeSchema, ok := tool.Tool.InputSchema.Properties["tree_id"].(map[string]any)
@@ -169,6 +176,20 @@ func TestSearchPeopleResultIncludesPaginationMetadata(t *testing.T) {
 	}
 	if final := searchPeopleResult(nil, 0, 10, 0); final.HasMore {
 		t.Fatal("last page must not report more results")
+	}
+}
+
+func TestLineageResultIncludesDepthAndFamilyEvidence(t *testing.T) {
+	result := lineageResult(domain.LineageResult{
+		RootPersonID: "I1", Direction: "ancestors",
+		Nodes: []domain.LineageNode{{Person: domain.Person{ID: "I2"}, Depth: 1, ViaFamilyID: "F1", Relationship: "ancestor"}},
+	})
+	if result.RootPersonID != "I1" || result.Direction != "ancestors" || len(result.Nodes) != 1 {
+		t.Fatalf("unexpected lineage result: %+v", result)
+	}
+	node := result.Nodes[0]
+	if node.PersonID != "I2" || node.Depth != 1 || node.ViaFamilyID != "F1" || node.Relationship != "ancestor" || node.Person.ID != "I2" {
+		t.Fatalf("unexpected lineage node: %+v", node)
 	}
 }
 

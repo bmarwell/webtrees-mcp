@@ -113,6 +113,21 @@ type relationshipPathResultDTO struct {
 	Path         []relationshipPathStepOutput `json:"path"`
 }
 
+type lineageNodeOutput struct {
+	PersonID     string          `json:"person_id"`
+	Depth        int             `json:"depth"`
+	ViaFamilyID  string          `json:"via_family_id"`
+	Relationship string          `json:"relationship"`
+	Person       personResultDTO `json:"person"`
+}
+
+type lineageResultDTO struct {
+	RootPersonID string              `json:"root_person_id"`
+	Direction    string              `json:"direction"`
+	Nodes        []lineageNodeOutput `json:"nodes"`
+	Truncated    bool                `json:"truncated"`
+}
+
 type eventSearchResultDTO struct {
 	PersonID string `json:"person_id"`
 	Type     string `json:"type"`
@@ -243,6 +258,17 @@ func relationshipPathResult(fromID, toID string, found bool, path []domain.Relat
 		steps = append(steps, relationshipPathStepOutput{FromPersonID: step.FromPersonID, ToPersonID: step.ToPersonID, FamilyID: step.FamilyID, Relationship: step.Relationship})
 	}
 	return relationshipPathResultDTO{FromPersonID: fromID, ToPersonID: toID, Found: found, Path: steps}
+}
+
+func lineageResult(result domain.LineageResult) lineageResultDTO {
+	nodes := make([]lineageNodeOutput, 0, len(result.Nodes))
+	for _, node := range result.Nodes {
+		nodes = append(nodes, lineageNodeOutput{
+			PersonID: node.Person.ID, Depth: node.Depth, ViaFamilyID: node.ViaFamilyID,
+			Relationship: node.Relationship, Person: personResult(node.Person),
+		})
+	}
+	return lineageResultDTO{RootPersonID: result.RootPersonID, Direction: result.Direction, Nodes: nodes, Truncated: result.Truncated}
 }
 
 func eventSearchResults(events []domain.EventSearchResult) eventSearchResultsDTO {

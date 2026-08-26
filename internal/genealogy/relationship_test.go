@@ -69,3 +69,24 @@ func TestFindRelationshipPathReportsDisconnectedPeople(t *testing.T) {
 		t.Fatalf("FindRelationshipPath() = path %+v, found %v, error %v; want no path", path, found, err)
 	}
 }
+
+func TestFindLineageTraversesDirectLinesWithDepthAndEvidence(t *testing.T) {
+	repository := relationshipRepository{
+		people: map[string]*domain.Person{
+			"I1": {ID: "I1", FamilyLinks: []domain.FamilyLink{{FamilyID: "F1", Role: "child"}, {FamilyID: "F2", Role: "spouse"}}},
+			"I2": {ID: "I2"}, "I3": {ID: "I3"}, "I4": {ID: "I4"},
+		},
+		families: map[string]*domain.Family{
+			"F1": {ID: "F1", Parents: []domain.Relative{{PersonID: "I2"}, {PersonID: "I3"}}, Children: []domain.Relative{{PersonID: "I1"}}},
+			"F2": {ID: "F2", Parents: []domain.Relative{{PersonID: "I1"}}, Children: []domain.Relative{{PersonID: "I4"}}},
+		},
+	}
+	ancestors, err := FindAncestors(repository, "42", "I1", 2, 10)
+	if err != nil || len(ancestors.Nodes) != 2 || ancestors.Nodes[0].Person.ID != "I2" || ancestors.Nodes[0].Depth != 1 || ancestors.Nodes[0].ViaFamilyID != "F1" {
+		t.Fatalf("unexpected ancestors: %+v, error %v", ancestors, err)
+	}
+	descendants, err := FindDescendants(repository, "42", "I1", 1, 10)
+	if err != nil || len(descendants.Nodes) != 1 || descendants.Nodes[0].Person.ID != "I4" || descendants.Nodes[0].Relationship != "descendant" {
+		t.Fatalf("unexpected descendants: %+v, error %v", descendants, err)
+	}
+}

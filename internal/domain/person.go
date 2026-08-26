@@ -90,6 +90,22 @@ type RelationshipPathStep struct {
 	Relationship string
 }
 
+// LineageNode is a person reached through one explicit family link.
+type LineageNode struct {
+	Person       Person
+	Depth        int
+	ViaFamilyID  string
+	Relationship string
+}
+
+// LineageResult is a bounded, deterministic direct-line traversal.
+type LineageResult struct {
+	RootPersonID string
+	Direction    string
+	Nodes        []LineageNode
+	Truncated    bool
+}
+
 // EventSearchResult is an event matched through the webtrees date index.
 type EventSearchResult struct {
 	PersonID string

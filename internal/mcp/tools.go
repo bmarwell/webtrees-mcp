@@ -50,6 +50,23 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository) {
 		framework.WithString("from_person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
 		framework.WithString("to_person_id", framework.Required(), framework.Description("Target individual xref, for example I2")),
 	), relationshipPathHandler(reader))
+	lineageTools := []struct {
+		name        string
+		direction   string
+		description string
+	}{
+		{"get_ancestors", "ancestors", "Use when you need the direct ancestor line for a known person. Do not infer ancestors from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person and get_family."},
+		{"get_descendants", "descendants", "Use when you need the direct descendant line for a known person. Do not infer descendants from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person and get_family."},
+	}
+	for _, spec := range lineageTools {
+		s.AddTool(framework.NewTool(spec.name,
+			framework.WithDescription(spec.description), framework.WithOutputSchema[lineageResultDTO](),
+			framework.WithInteger("tree_id", framework.Required(), framework.Min(1), framework.Description("Required numeric webtrees tree ID, for example 42")),
+			framework.WithString("person_id", framework.Required(), framework.Description("Starting individual xref, for example I1")),
+			framework.WithInteger("max_depth", framework.DefaultNumber(genealogy.DefaultLineageDepth), framework.Min(1), framework.Max(genealogy.MaxLineageDepth), framework.Description("Maximum number of generations to traverse")),
+			framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultLineageLimit), framework.Min(1), framework.Max(genealogy.MaxLineageLimit), framework.Description("Maximum people to return")),
+		), lineageHandler(reader, spec.direction))
+	}
 	s.AddTool(framework.NewTool("search_events",
 		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person for full evidence."),
 		framework.WithOutputSchema[eventSearchResultsDTO](),
@@ -145,6 +162,50 @@ func relationshipPathSummary(fromID, toID string, found bool, path []domain.Rela
 		lines = append(lines, fmt.Sprintf("- %s -> %s via %s (%s)", step.FromPersonID, step.ToPersonID, step.FamilyID, step.Relationship))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func lineageHandler(reader genealogy.Repository, direction string) server.ToolHandlerFunc {
+	return func(_ context.Context, request framework.CallToolRequest) (*framework.CallToolResult, error) {
+		var args struct {
+			TreeID   int    `json:"tree_id"`
+			PersonID string `json:"person_id"`
+			MaxDepth int    `json:"max_depth"`
+			Limit    int    `json:"limit"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		if args.TreeID < 1 || strings.TrimSpace(args.PersonID) == "" {
+			return framework.NewToolResultError("tree_id must be a positive numeric ID and person_id is required"), nil
+		}
+		if args.MaxDepth < 0 || args.MaxDepth > genealogy.MaxLineageDepth || args.Limit < 0 || args.Limit > genealogy.MaxLineageLimit {
+			return framework.NewToolResultError(fmt.Sprintf("max_depth must be 1-%d and limit must be 1-%d (or omitted)", genealogy.MaxLineageDepth, genealogy.MaxLineageLimit)), nil
+		}
+		rootID := strings.TrimSpace(args.PersonID)
+		var result domain.LineageResult
+		var err error
+		if direction == "ancestors" {
+			result, err = genealogy.FindAncestors(reader, strconv.Itoa(args.TreeID), rootID, args.MaxDepth, args.Limit)
+		} else {
+			result, err = genealogy.FindDescendants(reader, strconv.Itoa(args.TreeID), rootID, args.MaxDepth, args.Limit)
+		}
+		if err != nil {
+			return framework.NewToolResultError(err.Error()), nil
+		}
+		return structuredResult(lineageResult(result), lineageSummary(result))
+	}
+}
+
+func lineageSummary(result domain.LineageResult) string {
+	lines := []string{"Lineage: " + result.Direction, "Root person ID: " + result.RootPersonID, fmt.Sprintf("Nodes: %d", len(result.Nodes)), "Truncated: " + fmt.Sprint(result.Truncated)}
+	if len(result.Nodes) == 0 {
+		lines = append(lines, "Nodes: none")
+		return strings.Join(lines, "\n")
+	}
+	for _, node := range result.Nodes {
+		lines = append(lines, fmt.Sprintf("Node: person_id=%s; depth=%d; via_family_id=%s; relationship=%s", node.Person.ID, node.Depth, node.ViaFamilyID, node.Relationship), personSummary(node.Person))
+	}
+	return strings.Join(lines, "\n\n")
 }
 
 func eventSearchSummary(events []domain.EventSearchResult) string {
