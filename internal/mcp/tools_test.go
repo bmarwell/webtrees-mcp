@@ -35,7 +35,7 @@ func TestStructuredResultUsesStructuredContent(t *testing.T) {
 func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	mcpServer := server.NewMCPServer("test", "1.0")
 	RegisterTools(mcpServer, nil, "1")
-	for _, name := range []string{"get_person_by_exact_id", "search_person_by_name", "get_family", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_recently_born", "list_recently_deceased"} {
+	for _, name := range []string{"get_person_by_exact_id", "search_person_by_name", "get_family_by_exact_id", "relationship_path", "get_ancestors", "get_descendants", "search_events", "list_recently_born", "list_recently_deceased"} {
 		tool := mcpServer.GetTool(name)
 		if tool == nil {
 			t.Fatalf("tool %q was not registered", name)
@@ -67,6 +67,24 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(exactTool.Tool.Description), "do not pass a person's name") {
 		t.Errorf("exact lookup description must reject names: %q", exactTool.Tool.Description)
+	}
+	familyTool := mcpServer.GetTool("get_family_by_exact_id")
+	childrenSchema, ok := familyTool.Tool.OutputSchema.Properties["children"].(map[string]any)
+	if !ok {
+		t.Fatal("family output schema lacks children")
+	}
+	childItems, ok := childrenSchema["items"].(map[string]any)
+	if !ok {
+		t.Fatal("family children schema lacks item definition")
+	}
+	childProperties, ok := childItems["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("family child schema lacks properties")
+	}
+	for _, field := range []string{"person_id", "name", "birth_year", "sex"} {
+		if _, ok := childProperties[field]; !ok {
+			t.Errorf("family child schema lacks %s", field)
+		}
 	}
 	for _, field := range []string{"people", "total_count", "has_more", "limit", "offset"} {
 		if _, ok := searchTool.Tool.OutputSchema.Properties[field]; !ok {
@@ -178,6 +196,26 @@ func TestCollectionResultsUseObjectShapes(t *testing.T) {
 	}
 	if _, ok := result.StructuredContent.(peopleResultDTO); !ok {
 		t.Fatalf("collection structured content should be an object, got %T", result.StructuredContent)
+	}
+}
+
+func TestFamilyOutputIncludesChildDetails(t *testing.T) {
+	family := domain.Family{ID: "F1", Children: []domain.Relative{{PersonID: "I1"}, {PersonID: "I2"}}}
+	children := map[string]domain.Person{
+		"I1": {ID: "I1", Name: domain.Name{Given: "Test", Surname: "Person"}, BirthDate: "ABT 1900", Sex: "F"},
+	}
+	output := familyOutput(family, children)
+	if len(output.Children) != 2 || output.Children[0].PersonID != "I1" || output.Children[0].Name != "Test Person" || output.Children[0].BirthYear == nil || *output.Children[0].BirthYear != 1900 || output.Children[0].Sex != "F" {
+		t.Fatalf("unexpected child output: %+v", output.Children)
+	}
+	if output.Children[1].PersonID != "I2" || output.Children[1].Name != "" || output.Children[1].BirthYear != nil || output.Children[1].Sex != "" {
+		t.Fatalf("unexpected missing child details: %+v", output.Children[1])
+	}
+	summary := familySummary(family, children)
+	for _, field := range []string{"person_id=I1", "name=Test Person", "birth_year=1900", "sex=F"} {
+		if !strings.Contains(summary, field) {
+			t.Errorf("family summary lacks %q: %s", field, summary)
+		}
 	}
 }
 

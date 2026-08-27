@@ -32,6 +32,13 @@ type relativeOutput struct {
 	Relationship string `json:"relationship,omitempty"`
 }
 
+type familyChildOutput struct {
+	PersonID  string `json:"person_id"`
+	Name      string `json:"name,omitempty"`
+	BirthYear *int   `json:"birth_year,omitempty"`
+	Sex       string `json:"sex,omitempty"`
+}
+
 type familyLinkOutput struct {
 	FamilyID string `json:"family_id"`
 	Role     string `json:"role"`
@@ -62,12 +69,12 @@ type searchMatchOutput struct {
 }
 
 type familyOutputDTO struct {
-	ID       string           `json:"family_id"`
-	Parents  []relativeOutput `json:"parents,omitempty"`
-	Children []relativeOutput `json:"children,omitempty"`
-	Events   []eventOutput    `json:"events,omitempty"`
-	Notes    []string         `json:"notes,omitempty"`
-	Sources  []sourceOutput   `json:"sources,omitempty"`
+	ID       string              `json:"family_id"`
+	Parents  []relativeOutput    `json:"parents,omitempty"`
+	Children []familyChildOutput `json:"children,omitempty"`
+	Events   []eventOutput       `json:"events,omitempty"`
+	Notes    []string            `json:"notes,omitempty"`
+	Sources  []sourceOutput      `json:"sources,omitempty"`
 }
 
 type peopleResultDTO struct {
@@ -223,9 +230,19 @@ func sourceOutputs(sources []domain.Source) []sourceOutput {
 	return outputs
 }
 
-func familyOutput(family domain.Family) familyOutputDTO {
+func familyOutput(family domain.Family, children map[string]domain.Person) familyOutputDTO {
+	childOutputs := make([]familyChildOutput, 0, len(family.Children))
+	for _, child := range family.Children {
+		output := familyChildOutput{PersonID: child.PersonID}
+		if person, ok := children[child.PersonID]; ok {
+			output.Name = displayName(person)
+			output.BirthYear = birthYear(person.BirthDate)
+			output.Sex = person.Sex
+		}
+		childOutputs = append(childOutputs, output)
+	}
 	return familyOutputDTO{
-		ID: family.ID, Parents: relativeOutputs(family.Parents), Children: relativeOutputs(family.Children),
+		ID: family.ID, Parents: relativeOutputs(family.Parents), Children: childOutputs,
 		Events: eventOutputs(family.Events), Notes: family.Notes, Sources: sourceOutputs(family.Sources),
 	}
 }

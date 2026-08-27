@@ -102,7 +102,7 @@ research lead is not an established fact.
 The tree is selected once at startup with the required `-tree-id=<numeric ID>`
 argument; tools do not accept `tree_id`. Use `search_person_by_name` when
 starting from a name, then pass selected GEDCOM IDs to `get_person_by_exact_id`.
-Use `get_family` when a family ID is known, then inspect its parent/child IDs
+Use `get_family_by_exact_id` when a family ID is known, then inspect its parent/child IDs
 with `get_person_by_exact_id`.
 Relationship and analysis tools must return the IDs and evidence needed for a
 follow-up lookup. Agents should verify relationships through explicit family

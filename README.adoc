@@ -13,7 +13,7 @@ This project is available under the https://joinup.ec.europa.eu/collection/eupl/
 == Features
 
 * Runs over the MCP stdio transport for use by local agent clients.
-* Exposes `get_person_by_exact_id`, `search_person_by_name`, `get_family`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_recently_born`, and `list_recently_deceased` tools.
+* Exposes `get_person_by_exact_id`, `search_person_by_name`, `get_family_by_exact_id`, `relationship_path`, `get_ancestors`, `get_descendants`, `search_events`, `list_recently_born`, and `list_recently_deceased` tools.
 * Parses names, family links, events, qualified dates, places, notes, and source references from webtrees GEDCOM records.
 * Performs only parameterized `SELECT` queries; it has no write or migration operations.
 * Supports configurable webtrees table prefixes.
@@ -151,7 +151,8 @@ fields; it does not scan raw GEDCOM records. Returned IDs are research leads;
 chain them into `get_person_by_exact_id` for verification. The deprecated
 `include_indirect` option is accepted for compatibility but cannot enable raw
 GEDCOM matching in this indexed search.
-`get_family` accepts `family_id`, returning parent and child links
+`get_family_by_exact_id` accepts `family_id`, returning parent links and child
+records with available `person_id`, `name`, `birth_year`, and `sex` values
 without embedding duplicate person objects.
 
 `relationship_path` accepts `from_person_id` and `to_person_id`.
@@ -188,7 +189,7 @@ The tree ID is fixed by the startup `-tree-id` argument. Use
 `include_indirect` only when investigating broad GEDCOM-record matches, and
 check each result's `match.direct_hit` before using it. Chain a selected
 `person_id` into `get_person_by_exact_id` for complete event, family-link, note, and
-source detail. Use `get_family` when a family ID is known, then chain its
+source detail. Use `get_family_by_exact_id` when a family ID is known, then chain its
 parent and child IDs into `get_person_by_exact_id`. The recent-birth and recent-death
 tools are rankings by parsed year, not proof that the event is historically
 the latest; inspect the detailed person events before making that claim.
@@ -212,7 +213,7 @@ object shapes in `structuredContent`:
   page exists at the requested offset and limit.
 * `list_recently_born` and `list_recently_deceased`: `{ "people": [person] }`.
 * `search_events`: `{ "events": [{"person_id", "type", "date", "place"}] }`.
-* `get_family`: an object with `family_id` and optional `parents`, `children`,
+* `get_family_by_exact_id`: an object with `family_id` and optional `parents`, `children`,
   `events`, `notes`, and `sources`.
 * `get_ancestors` and `get_descendants`: `{ "root_person_id": "I1",
   "direction": "ancestors", "nodes": [{"person_id", "depth",

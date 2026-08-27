@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"webtrees-mcp/internal/domain"
@@ -35,8 +36,8 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID stri
 		framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultPageSize), framework.Min(1), framework.Max(genealogy.MaxPageSize), framework.Description("Maximum people to return (1-100)")),
 		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
 	), searchPersonByNameHandler(reader, treeID))
-	s.AddTool(framework.NewTool("get_family",
-		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not infer relationships from surnames or missing links. Chain returned person_id values into get_person_by_exact_id."),
+	s.AddTool(framework.NewTool("get_family_by_exact_id",
+		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not pass a person's name or infer relationships from surnames. Children include available names, birth years, and sex. Chain returned person_id values into get_person_by_exact_id."),
 		framework.WithOutputSchema[familyOutputDTO](),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader, treeID))
@@ -277,7 +278,14 @@ func getFamilyHandler(reader genealogy.Repository, treeID string) server.ToolHan
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(familyOutput(*family), familySummary(*family))
+		children := make(map[string]domain.Person, len(family.Children))
+		for _, child := range family.Children {
+			person, err := reader.GetPerson(treeID, child.PersonID)
+			if err == nil && person != nil {
+				children[child.PersonID] = *person
+			}
+		}
+		return structuredResult(familyOutput(*family, children), familySummary(*family, children))
 	}
 }
 
@@ -393,6 +401,19 @@ func personSummary(person domain.Person) string {
 		lines = append(lines, "Sources: none")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func birthYear(value string) *int {
+	for _, field := range strings.Fields(value) {
+		field = strings.Trim(field, "(),.-")
+		if len(field) == 4 {
+			year, err := strconv.Atoi(field)
+			if err == nil && year > 0 {
+				return &year
+			}
+		}
+	}
+	return nil
 }
 
 func valueOrNotRecorded(value string) string {
@@ -521,7 +542,7 @@ func searchPeopleSummary(results []domain.PersonSearchResult, prefix string) str
 	return prefix + "\n\n" + strings.Join(blocks, "\n\n")
 }
 
-func familySummary(family domain.Family) string {
+func familySummary(family domain.Family, childPeople ...map[string]domain.Person) string {
 	lines := []string{"Family ID: " + family.ID}
 	if len(family.Parents) > 0 {
 		lines = append(lines, "Parents:")
@@ -534,7 +555,16 @@ func familySummary(family domain.Family) string {
 	if len(family.Children) > 0 {
 		lines = append(lines, "Children:")
 		for _, child := range family.Children {
-			lines = append(lines, "- "+child.PersonID)
+			description := "- " + child.PersonID
+			if len(childPeople) > 0 {
+				description = "- person_id=" + child.PersonID
+				if person, ok := childPeople[0][child.PersonID]; ok {
+					description += "; name=" + valueOrNotRecorded(displayName(person))
+					description += "; birth_year=" + valueOrNotRecorded(formatBirthYear(person.BirthDate))
+					description += "; sex=" + valueOrNotRecorded(person.Sex)
+				}
+			}
+			lines = append(lines, description)
 		}
 	} else {
 		lines = append(lines, "Children: none")
@@ -568,6 +598,14 @@ func familySummary(family domain.Family) string {
 		lines = append(lines, "Sources: none")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatBirthYear(value string) string {
+	year := birthYear(value)
+	if year == nil {
+		return ""
+	}
+	return strconv.Itoa(*year)
 }
 
 func relativeIDs(relatives []domain.Relative) []string {
