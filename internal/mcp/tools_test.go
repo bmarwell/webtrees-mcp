@@ -219,6 +219,27 @@ func TestFamilyOutputIncludesChildDetails(t *testing.T) {
 	}
 }
 
+func TestEnrichedFamilyLinksIncludeRelationshipDetails(t *testing.T) {
+	person := domain.Person{ID: "I1", FamilyLinks: []domain.FamilyLink{
+		{FamilyID: "F1", Role: "child"}, {FamilyID: "F2", Role: "spouse"},
+	}}
+	families := map[string]domain.Family{
+		"F1": {ID: "F1", Parents: []domain.Relative{{PersonID: "I2"}}},
+		"F2": {ID: "F2", Parents: []domain.Relative{{PersonID: "I1"}, {PersonID: "I3"}}, Children: []domain.Relative{{PersonID: "I4"}, {PersonID: "I5"}}},
+	}
+	people := map[string]domain.Person{
+		"I2": {ID: "I2", Name: domain.Name{Given: "Parent", Surname: "One"}, Sex: "M"},
+		"I3": {ID: "I3", Name: domain.Name{Given: "Partner", Surname: "One"}},
+	}
+	links := enrichedFamilyLinkOutputs(person, families, people)
+	if len(links) != 2 || len(links[0].Parents) != 1 || links[0].Parents[0].Role != "father" || links[0].Parents[0].Name != "Parent One" {
+		t.Fatalf("unexpected parent details: %+v", links)
+	}
+	if links[1].Spouse == nil || links[1].Spouse.PersonID != "I3" || links[1].Spouse.Name != "Partner One" || links[1].ChildrenCount == nil || *links[1].ChildrenCount != 2 {
+		t.Fatalf("unexpected spouse details: %+v", links[1])
+	}
+}
+
 func TestSearchPeopleResultIncludesPaginationMetadata(t *testing.T) {
 	result := searchPeopleResult([]domain.PersonSearchResult{{Person: domain.Person{ID: "I1"}}}, 3, 1, 1)
 	if len(result.People) != 1 || result.TotalCount != 3 || !result.HasMore || result.Limit != 1 || result.Offset != 1 {

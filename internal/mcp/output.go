@@ -1,6 +1,10 @@
 package mcp
 
-import "webtrees-mcp/internal/domain"
+import (
+	"strings"
+
+	"webtrees-mcp/internal/domain"
+)
 
 // These are transport DTOs. They deliberately own the MCP/JSON contract
 // instead of exposing domain or database representations to clients.
@@ -40,8 +44,17 @@ type familyChildOutput struct {
 }
 
 type familyLinkOutput struct {
-	FamilyID string `json:"family_id"`
-	Role     string `json:"role"`
+	FamilyID      string               `json:"family_id"`
+	Role          string               `json:"role"`
+	Parents       []familyPersonOutput `json:"parents,omitempty"`
+	Spouse        *familyPersonOutput  `json:"spouse,omitempty"`
+	ChildrenCount *int                 `json:"children_count,omitempty"`
+}
+
+type familyPersonOutput struct {
+	PersonID string `json:"person_id"`
+	Name     string `json:"name,omitempty"`
+	Role     string `json:"role,omitempty"`
 }
 
 type dateOutput struct {
@@ -148,6 +161,12 @@ func personResult(person domain.Person) personResultDTO {
 	}
 }
 
+func enrichedPersonResult(person domain.Person, families map[string]domain.Family, people map[string]domain.Person) personResultDTO {
+	output := personResult(person)
+	output.FamilyLinks = enrichedFamilyLinkOutputs(person, families, people)
+	return output
+}
+
 func alternateNameOutputs(names []domain.Name) []nameOutput {
 	if len(names) < 2 {
 		return nil
@@ -205,6 +224,54 @@ func familyLinkOutputs(links []domain.FamilyLink) []familyLinkOutput {
 		outputs = append(outputs, familyLinkOutput{FamilyID: link.FamilyID, Role: link.Role})
 	}
 	return outputs
+}
+
+func enrichedFamilyLinkOutputs(person domain.Person, families map[string]domain.Family, people map[string]domain.Person) []familyLinkOutput {
+	outputs := make([]familyLinkOutput, 0, len(person.FamilyLinks))
+	for _, link := range person.FamilyLinks {
+		output := familyLinkOutput{FamilyID: link.FamilyID, Role: link.Role}
+		family, ok := families[link.FamilyID]
+		if !ok {
+			outputs = append(outputs, output)
+			continue
+		}
+		if link.Role == "child" {
+			for _, parent := range family.Parents {
+				entry := familyPersonOutput{PersonID: parent.PersonID, Role: parentRole(people[parent.PersonID])}
+				if related, exists := people[parent.PersonID]; exists {
+					entry.Name = displayName(related)
+				}
+				output.Parents = append(output.Parents, entry)
+			}
+		} else if link.Role == "spouse" {
+			count := len(family.Children)
+			output.ChildrenCount = &count
+			for _, parent := range family.Parents {
+				if parent.PersonID == person.ID {
+					continue
+				}
+				entry := familyPersonOutput{PersonID: parent.PersonID}
+				if related, exists := people[parent.PersonID]; exists {
+					entry.Name = displayName(related)
+				}
+				output.Spouse = &entry
+				break
+			}
+		}
+		outputs = append(outputs, output)
+	}
+	return outputs
+}
+
+func parentRole(person domain.Person) string {
+	switch strings.ToUpper(person.Sex) {
+	case "M":
+		return "father"
+	case "F":
+		return "mother"
+	default:
+		return "parent"
+	}
 }
 
 func eventOutputs(events []domain.Event) []eventOutput {

@@ -259,7 +259,12 @@ func searchPersonByNameHandler(reader genealogy.Repository, treeID string) serve
 			return framework.NewToolResultError(err.Error()), nil
 		}
 		limit, offset := genealogy.NormalizePage(args.Limit, args.Offset)
-		return structuredResult(searchPeopleResult(searchResults.People, searchResults.TotalCount, limit, offset), searchPeopleSummary(searchResults.People, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname)))
+		output := searchPeopleResult(searchResults.People, searchResults.TotalCount, limit, offset)
+		for i, result := range searchResults.People {
+			families, people := resolveFamilyLinks(reader, treeID, result.Person)
+			output.People[i] = enrichedPersonResult(result.Person, families, people)
+		}
+		return structuredResult(output, enrichedSearchPeopleSummary(searchResults.People, reader, treeID, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname)))
 	}
 }
 
@@ -328,7 +333,8 @@ func getPersonByExactIDHandler(reader genealogy.Repository, treeID string) serve
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(personResult(*person), personSummary(*person))
+		families, people := resolveFamilyLinks(reader, treeID, *person)
+		return structuredResult(enrichedPersonResult(*person, families, people), enrichedPersonSummary(*person, families, people))
 	}
 }
 
@@ -338,7 +344,37 @@ func validPersonID(value string) bool {
 	return gedcomPersonIDPattern.MatchString(strings.TrimSpace(value))
 }
 
+func resolveFamilyLinks(reader genealogy.Repository, treeID string, person domain.Person) (map[string]domain.Family, map[string]domain.Person) {
+	families := make(map[string]domain.Family, len(person.FamilyLinks))
+	people := make(map[string]domain.Person)
+	for _, link := range person.FamilyLinks {
+		family, err := reader.GetFamily(treeID, link.FamilyID)
+		if err != nil || family == nil {
+			continue
+		}
+		families[link.FamilyID] = *family
+		ids := family.Parents
+		if link.Role == "spouse" {
+			ids = append(ids, family.Children...)
+		}
+		for _, relative := range ids {
+			if _, exists := people[relative.PersonID]; exists {
+				continue
+			}
+			related, err := reader.GetPerson(treeID, relative.PersonID)
+			if err == nil && related != nil {
+				people[relative.PersonID] = *related
+			}
+		}
+	}
+	return families, people
+}
+
 func personSummary(person domain.Person) string {
+	return enrichedPersonSummary(person, nil, nil)
+}
+
+func enrichedPersonSummary(person domain.Person, families map[string]domain.Family, people map[string]domain.Person) string {
 	name := displayName(person)
 	if name == "" {
 		name = "Unknown person"
@@ -375,7 +411,23 @@ func personSummary(person domain.Person) string {
 	if len(person.FamilyLinks) > 0 {
 		lines = append(lines, "Family links:")
 		for _, link := range person.FamilyLinks {
-			lines = append(lines, "- "+link.FamilyID+" ("+link.Role+")")
+			description := "- family_id=" + link.FamilyID + "; role=" + link.Role
+			if family, ok := families[link.FamilyID]; ok {
+				if link.Role == "child" {
+					for _, parent := range family.Parents {
+						description += fmt.Sprintf("; parent=%s (%s; role=%s)", parent.PersonID, valueOrNotRecorded(displayName(people[parent.PersonID])), parentRole(people[parent.PersonID]))
+					}
+				} else if link.Role == "spouse" {
+					description += fmt.Sprintf("; children_count=%d", len(family.Children))
+					for _, spouse := range family.Parents {
+						if spouse.PersonID != person.ID {
+							description += fmt.Sprintf("; spouse=%s (%s)", spouse.PersonID, valueOrNotRecorded(displayName(people[spouse.PersonID])))
+							break
+						}
+					}
+				}
+			}
+			lines = append(lines, description)
 		}
 	} else {
 		lines = append(lines, "Family links: none")
@@ -401,6 +453,26 @@ func personSummary(person domain.Person) string {
 		lines = append(lines, "Sources: none")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func enrichedSearchPeopleSummary(results []domain.PersonSearchResult, reader genealogy.Repository, treeID, prefix string) string {
+	if len(results) == 0 {
+		return prefix
+	}
+	blocks := make([]string, 0, len(results))
+	for _, result := range results {
+		match := "indirect record match"
+		if result.Match.DirectHit {
+			match = "direct indexed name match"
+		}
+		block := "Result type: research lead\nMatch: " + match
+		if len(result.Match.Fields) > 0 {
+			block += "\nMatched fields: " + strings.Join(result.Match.Fields, ", ")
+		}
+		families, people := resolveFamilyLinks(reader, treeID, result.Person)
+		blocks = append(blocks, block+"\n"+enrichedPersonSummary(result.Person, families, people))
+	}
+	return prefix + "\n\n" + strings.Join(blocks, "\n\n")
 }
 
 func birthYear(value string) *int {

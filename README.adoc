@@ -206,7 +206,10 @@ The server publishes these schemas through `tools/list` and returns the same
 object shapes in `structuredContent`:
 
 * `get_person_by_exact_id`: an object with `id`, `name`, and optional dates, alternate names,
-  events, family links, relatives, notes, sources, and search-match metadata.
+  events, family links, relatives, notes, sources, and search-match metadata. Family
+  links include the exact `family_id` and `role`; child links include resolved parent
+  IDs, names, and roles, while spouse links include the resolved spouse and child count
+  when available.
 * `search_person_by_name`: `{ "people": [person], "total_count": 42,
   "has_more": true, "limit": 10, "offset": 0 }`. `total_count` is the
   number of matching indexed candidates; `has_more` indicates whether another
