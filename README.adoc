@@ -159,8 +159,10 @@ without embedding duplicate person objects.
 
 `relationship_path` accepts `from_person_id` and `to_person_id`.
 It follows explicit family links for a bounded shortest-path search and returns
-each hop with its `family_id` evidence and relationship kind. A missing path is
-reported with `found: false`; surnames and inferred relationships are not used.
+each hop with its `family_id` evidence, relationship kind, and resolved person
+details for both endpoints. A missing path is reported with `found: false`;
+surnames and inferred relationships are not used. Use
+`get_person_by_exact_id` for additional or source-level person detail.
 
 `get_ancestors` and `get_descendants` accept a starting `person_id` and optional
 `max_depth` (default `5`, maximum `20`) and `limit`

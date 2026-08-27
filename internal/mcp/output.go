@@ -125,10 +125,12 @@ func searchPeopleResult(results []domain.PersonSearchResult, totalCount, limit, 
 }
 
 type relationshipPathStepOutput struct {
-	FromPersonID string `json:"from_person_id"`
-	ToPersonID   string `json:"to_person_id"`
-	FamilyID     string `json:"family_id"`
-	Relationship string `json:"relationship"`
+	FromPersonID string           `json:"from_person_id"`
+	ToPersonID   string           `json:"to_person_id"`
+	FamilyID     string           `json:"family_id"`
+	Relationship string           `json:"relationship"`
+	FromPerson   *personResultDTO `json:"from_person,omitempty"`
+	ToPerson     *personResultDTO `json:"to_person,omitempty"`
 }
 
 type relationshipPathResultDTO struct {
@@ -354,6 +356,19 @@ func relationshipPathResult(fromID, toID string, found bool, path []domain.Relat
 		steps = append(steps, relationshipPathStepOutput{FromPersonID: step.FromPersonID, ToPersonID: step.ToPersonID, FamilyID: step.FamilyID, Relationship: step.Relationship})
 	}
 	return relationshipPathResultDTO{FromPersonID: fromID, ToPersonID: toID, Found: found, Path: steps}
+}
+
+func relationshipPathResultWithPeople(fromID, toID string, found bool, path []domain.RelationshipPathStep, people map[string]personResultDTO) relationshipPathResultDTO {
+	result := relationshipPathResult(fromID, toID, found, path)
+	for i, step := range path {
+		if person, ok := people[step.FromPersonID]; ok {
+			result.Path[i].FromPerson = &person
+		}
+		if person, ok := people[step.ToPersonID]; ok {
+			result.Path[i].ToPerson = &person
+		}
+	}
+	return result
 }
 
 func lineageResult(result domain.LineageResult) lineageResultDTO {

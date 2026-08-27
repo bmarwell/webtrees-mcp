@@ -84,6 +84,23 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 			t.Errorf("relationship_path description lacks %q: %q", phrase, relationshipTool.Tool.Description)
 		}
 	}
+	pathSchema, ok := relationshipTool.Tool.OutputSchema.Properties["path"].(map[string]any)
+	if !ok {
+		t.Fatal("relationship_path schema lacks path")
+	}
+	pathItems, ok := pathSchema["items"].(map[string]any)
+	if !ok {
+		t.Fatal("relationship_path schema lacks path item definition")
+	}
+	pathProperties, ok := pathItems["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("relationship_path schema lacks path item properties")
+	}
+	for _, field := range []string{"from_person", "to_person"} {
+		if _, ok := pathProperties[field]; !ok {
+			t.Errorf("relationship_path path item lacks %s", field)
+		}
+	}
 	familyTool := mcpServer.GetTool("get_family_by_exact_id")
 	childrenSchema, ok := familyTool.Tool.OutputSchema.Properties["children"].(map[string]any)
 	if !ok {

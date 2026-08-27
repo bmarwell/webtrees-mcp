@@ -145,10 +145,49 @@ func relationshipPathHandler(reader genealogy.Repository, treeID string) server.
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		output := relationshipPathResult(args.FromPersonID, args.ToPersonID, found, path)
-		output.AIContext = aiContextDTO{Hint: "Only explicit family links were used; a missing path is not proof that no relationship exists.", NextAction: "Verify endpoint people and family records with exact-ID lookups."}
-		return structuredResult(output, relationshipPathSummary(args.FromPersonID, args.ToPersonID, found, path)+"\nNext action: verify endpoint people and family records with exact-ID lookups.")
+		people := make(map[string]personResultDTO)
+		domainPeople := make(map[string]domain.Person)
+		ids := []string{args.FromPersonID, args.ToPersonID}
+		for _, step := range path {
+			ids = append(ids, step.FromPersonID, step.ToPersonID)
+		}
+		for _, id := range ids {
+			if _, exists := domainPeople[id]; exists {
+				continue
+			}
+			person, err := reader.GetPerson(treeID, id)
+			if err != nil || person == nil {
+				continue
+			}
+			families, related := resolveFamilyLinks(reader, treeID, *person)
+			domainPeople[id] = *person
+			people[id] = enrichedPersonResult(*person, families, related)
+		}
+		output := relationshipPathResultWithPeople(args.FromPersonID, args.ToPersonID, found, path, people)
+		output.AIContext = aiContextDTO{Hint: "Resolved person details are included for path nodes. More complete or authoritative person data is available from get_person_by_exact_id.", NextAction: "Call get_person_by_exact_id for a path person_id when additional detail or source evidence is needed."}
+		return structuredResult(output, relationshipPathSummaryWithPeople(args.FromPersonID, args.ToPersonID, found, path, domainPeople)+"\nNext action: call get_person_by_exact_id for a path person_id when additional detail or source evidence is needed.")
 	}
+}
+
+func relationshipPathSummaryWithPeople(fromID, toID string, found bool, path []domain.RelationshipPathStep, people map[string]domain.Person) string {
+	lines := []string{relationshipPathSummary(fromID, toID, found, path)}
+	if !found || len(people) == 0 {
+		return strings.Join(lines, "\n")
+	}
+	lines = append(lines, "Path person details:")
+	seen := make(map[string]bool)
+	for _, step := range path {
+		for _, id := range []string{step.FromPersonID, step.ToPersonID} {
+			if seen[id] {
+				continue
+			}
+			if person, ok := people[id]; ok {
+				lines = append(lines, personSummary(person))
+				seen[id] = true
+			}
+		}
+	}
+	return strings.Join(lines, "\n\n")
 }
 
 func relationshipPathSummary(fromID, toID string, found bool, path []domain.RelationshipPathStep) string {
