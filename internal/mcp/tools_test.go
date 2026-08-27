@@ -77,6 +77,13 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 	if !strings.Contains(strings.ToLower(exactTool.Tool.Description), "do not pass a person's name") {
 		t.Errorf("exact lookup description must reject names: %q", exactTool.Tool.Description)
 	}
+	relationshipTool := mcpServer.GetTool("relationship_path")
+	description := strings.ToLower(relationshipTool.Tool.Description)
+	for _, phrase := range []string{"primary tool", "always use this first", "do not manually traverse"} {
+		if !strings.Contains(description, phrase) {
+			t.Errorf("relationship_path description lacks %q: %q", phrase, relationshipTool.Tool.Description)
+		}
+	}
 	familyTool := mcpServer.GetTool("get_family_by_exact_id")
 	childrenSchema, ok := familyTool.Tool.OutputSchema.Properties["children"].(map[string]any)
 	if !ok {
@@ -260,6 +267,13 @@ func TestPersonAIContextSuggestsFamilyFollowUp(t *testing.T) {
 	})
 	if !reflect.DeepEqual(context.ParentsFound, []string{"I2", "I3"}) || context.Hint == "" || context.NextAction == "" {
 		t.Fatalf("unexpected AI context: %+v", context)
+	}
+}
+
+func TestSearchAIContextSuggestsRelationshipPathForTwoPeople(t *testing.T) {
+	context := searchAIContext(2, true, 0, 10)
+	if !strings.Contains(context.Hint, "relationship_path") || context.NextAction != "Call relationship_path with two returned person_id values." {
+		t.Fatalf("unexpected search AI context: %+v", context)
 	}
 }
 

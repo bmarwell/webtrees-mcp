@@ -52,7 +52,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID stri
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader, treeID))
 	s.AddTool(newReadOnlyTool("relationship_path",
-		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person_by_exact_id or get_family."),
+		framework.WithDescription("Use when checking how two individuals are related, connected, or share a relationship path. PRIMARY TOOL: ALWAYS use this first when both person IDs are known. Pass exact IDs in from_person_id and to_person_id. Do not manually traverse families line by line when both IDs are available. The result uses only explicit family links; verify returned evidence with get_person_by_exact_id or get_family_by_exact_id. Chain returned IDs into those tools."),
 		framework.WithOutputSchema[relationshipPathResultDTO](),
 		framework.WithString("from_person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name.")),
 		framework.WithString("to_person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I456. Do not pass a person's name.")),
@@ -284,13 +284,19 @@ func searchPersonByNameHandler(reader genealogy.Repository, treeID string) serve
 			families, people := resolveFamilyLinks(reader, treeID, result.Person)
 			output.People[i] = enrichedPersonResult(result.Person, families, people)
 		}
-		if output.HasMore {
-			output.AIContext = aiContextDTO{Hint: "The result is paginated; use the same search with the next offset.", NextAction: fmt.Sprintf("Call search_person_by_name again with offset=%d.", offset+limit)}
-		} else {
-			output.AIContext = aiContextDTO{Hint: "Search results are research leads, not verified identities.", NextAction: "Call get_person_by_exact_id for a selected person_id."}
-		}
+		output.AIContext = searchAIContext(len(searchResults.People), output.HasMore, offset, limit)
 		return structuredResult(output, enrichedSearchPeopleSummary(searchResults.People, reader, treeID, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname))+"\n\nNext action: "+output.AIContext.NextAction)
 	}
+}
+
+func searchAIContext(resultCount int, hasMore bool, offset, limit int) aiContextDTO {
+	if resultCount >= 2 {
+		return aiContextDTO{Hint: "If you are trying to determine how two found individuals are connected, call relationship_path directly instead of inspecting family entries manually.", NextAction: "Call relationship_path with two returned person_id values."}
+	}
+	if hasMore {
+		return aiContextDTO{Hint: "The result is paginated; use the same search with the next offset.", NextAction: fmt.Sprintf("Call search_person_by_name again with offset=%d.", offset+limit)}
+	}
+	return aiContextDTO{Hint: "Search results are research leads, not verified identities.", NextAction: "Call get_person_by_exact_id for a selected person_id."}
 }
 
 func getFamilyHandler(reader genealogy.Repository, treeID string) server.ToolHandlerFunc {
