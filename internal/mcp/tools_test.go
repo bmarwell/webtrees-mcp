@@ -48,6 +48,12 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		if tool.Tool.OutputSchema.Type != "object" {
 			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)
 		}
+		if tool.Tool.Annotations.DestructiveHint == nil || *tool.Tool.Annotations.DestructiveHint {
+			t.Errorf("tool %q must explicitly declare destructiveHint=false", name)
+		}
+		if tool.Tool.Annotations.ReadOnlyHint == nil || !*tool.Tool.Annotations.ReadOnlyHint {
+			t.Errorf("tool %q must explicitly declare readOnlyHint=true", name)
+		}
 		if _, ok := tool.Tool.OutputSchema.Properties["_ai_context"]; !ok {
 			t.Errorf("tool %q output schema lacks _ai_context", name)
 		}

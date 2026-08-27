@@ -14,14 +14,24 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+func newReadOnlyTool(name string, options ...framework.ToolOption) framework.Tool {
+	readOnly := []framework.ToolOption{
+		framework.WithReadOnlyHintAnnotation(true),
+		framework.WithDestructiveHintAnnotation(false),
+		framework.WithIdempotentHintAnnotation(true),
+		framework.WithOpenWorldHintAnnotation(false),
+	}
+	return framework.NewTool(name, append(readOnly, options...)...)
+}
+
 func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID string) {
-	tool := framework.NewTool("get_person_by_exact_id",
+	tool := newReadOnlyTool("get_person_by_exact_id",
 		framework.WithDescription("Use when you already have an exact GEDCOM person_id such as I123 and need verified details. Do not pass a person's name here and do not use for name searches; call search_person_by_name first. Chain the returned person_id here. Read content as the complete factual result; do not infer omitted facts."),
 		framework.WithOutputSchema[personResultDTO](),
 		framework.WithString("person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name; search by name first.")),
 	)
 	s.AddTool(tool, getPersonByExactIDHandler(reader, treeID))
-	s.AddTool(framework.NewTool("search_person_by_name",
+	s.AddTool(newReadOnlyTool("search_person_by_name",
 		framework.WithDescription("Use when you have a person's name and need a research lead. Required: surname; optional: given_name, sex, match_mode (exact, prefix, or fuzzy; default prefix), birth_year_min/max, death_year_min/max, limit 1-100 (default 10), offset 0-10000 (default 0). The tree is configured at server startup. Do not pass a name to get_person_by_exact_id or treat results as verified facts; fuzzy mode is bounded and may miss candidates. Chain a returned person_id into get_person_by_exact_id. Read content as the factual lead record."),
 		framework.WithOutputSchema[searchPeopleResultDTO](),
 		framework.WithString("surname", framework.Required(), framework.MinLength(1), framework.Description("Required, non-blank surname or name fragment; surrounding whitespace is ignored")),
@@ -36,12 +46,12 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID stri
 		framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultPageSize), framework.Min(1), framework.Max(genealogy.MaxPageSize), framework.Description("Maximum people to return (1-100)")),
 		framework.WithInteger("offset", framework.DefaultNumber(0), framework.Min(0), framework.Max(genealogy.MaxPageOffset), framework.Description("Number of matching people to skip (0-10000)")),
 	), searchPersonByNameHandler(reader, treeID))
-	s.AddTool(framework.NewTool("get_family_by_exact_id",
+	s.AddTool(newReadOnlyTool("get_family_by_exact_id",
 		framework.WithDescription("Use when you have an exact family_id and need its links and family evidence. Do not pass a person's name or infer relationships from surnames. Children include available names, birth years, and sex. Chain returned person_id values into get_person_by_exact_id."),
 		framework.WithOutputSchema[familyOutputDTO](),
 		framework.WithString("family_id", framework.Required(), framework.Description("Family xref, for example F1")),
 	), getFamilyHandler(reader, treeID))
-	s.AddTool(framework.NewTool("relationship_path",
+	s.AddTool(newReadOnlyTool("relationship_path",
 		framework.WithDescription("Use when you need an evidence-backed path between two known individuals. Do not infer a relationship from surnames or incomplete data; this bounded search may find no path. Chain returned person_id or family_id values into get_person_by_exact_id or get_family."),
 		framework.WithOutputSchema[relationshipPathResultDTO](),
 		framework.WithString("from_person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name.")),
@@ -56,14 +66,14 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID stri
 		{"get_descendants", "descendants", "Use when you need the direct descendant line for a known person. Do not infer descendants from surnames or incomplete family links; traversal is bounded by depth and limit. Chain returned person_id and via_family_id values into get_person_by_exact_id and get_family."},
 	}
 	for _, spec := range lineageTools {
-		s.AddTool(framework.NewTool(spec.name,
+		s.AddTool(newReadOnlyTool(spec.name,
 			framework.WithDescription(spec.description), framework.WithOutputSchema[lineageResultDTO](),
 			framework.WithString("person_id", framework.Required(), framework.Pattern(`^I[0-9]+$`), framework.Description("Exact numeric GEDCOM individual xref, for example I123. Do not pass a person's name; search by name first.")),
 			framework.WithInteger("max_depth", framework.DefaultNumber(genealogy.DefaultLineageDepth), framework.Min(1), framework.Max(genealogy.MaxLineageDepth), framework.Description("Maximum number of generations to traverse")),
 			framework.WithInteger("limit", framework.DefaultNumber(genealogy.DefaultLineageLimit), framework.Min(1), framework.Max(genealogy.MaxLineageLimit), framework.Description("Maximum people to return")),
 		), lineageHandler(reader, treeID, spec.direction))
 	}
-	s.AddTool(framework.NewTool("search_events",
+	s.AddTool(newReadOnlyTool("search_events",
 		framework.WithDescription("Use when searching indexed individual events by type, date range, or place. Do not treat an indexed year as more precise than the source date; results are leads, not proof. Chain returned person_id values into get_person_by_exact_id for full evidence."),
 		framework.WithOutputSchema[eventSearchResultsDTO](),
 		framework.WithString("event_type", framework.Description("GEDCOM event type, for example BIRT, DEAT, or MARR")),
@@ -85,7 +95,7 @@ func RegisterTools(s *server.MCPServer, reader genealogy.Repository, treeID stri
 			return r.ListRecentlyDeceased(treeID, limit, offset)
 		}},
 	} {
-		s.AddTool(framework.NewTool(spec.name, framework.WithDescription(spec.desc),
+		s.AddTool(newReadOnlyTool(spec.name, framework.WithDescription(spec.desc),
 			framework.WithOutputSchema[peopleResultDTO](),
 			framework.WithInteger("limit", framework.Description("Maximum number of people; defaults to 10 and is capped at 100")),
 			framework.WithInteger("offset", framework.Description("Number of people to skip; defaults to 0")),
