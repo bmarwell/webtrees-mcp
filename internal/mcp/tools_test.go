@@ -435,6 +435,16 @@ func TestTextSummariesUseExplicitBlocksForCollections(t *testing.T) {
 	if path != "Relationship path: I1 -> I2\nHops: 1\n- I1 -> I2 via F1 (parent)" {
 		t.Errorf("relationship summary = %q", path)
 	}
+	detailedPath := relationshipPathSummaryWithPeople("I1", "I2", true, []domain.RelationshipPathStep{{FromPersonID: "I1", ToPersonID: "I2", FamilyID: "F1", Relationship: "parent"}}, map[string]domain.Person{
+		"I1": {ID: "I1", Name: domain.Name{Given: "Source"}}, "I2": {ID: "I2", Name: domain.Name{Given: "Target"}},
+	}, map[string]domain.Family{
+		"F1": {ID: "F1", Parents: []domain.Relative{{PersonID: "I2"}}, Children: []domain.Relative{{PersonID: "I1"}}},
+	})
+	for _, phrase := range []string{"from_role=child", "to_role=parent", "I2 is parent of I1", "Family membership: family_id=F1", "I2 (Target)", "I1 (Source)"} {
+		if !strings.Contains(detailedPath, phrase) {
+			t.Errorf("detailed relationship summary lacks %q: %s", phrase, detailedPath)
+		}
+	}
 }
 
 func TestJoinPhrasesUsesReadableConjunctions(t *testing.T) {

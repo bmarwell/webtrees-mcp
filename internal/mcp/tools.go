@@ -147,6 +147,7 @@ func relationshipPathHandler(reader genealogy.Repository, treeID string) server.
 		}
 		people := make(map[string]personResultDTO)
 		domainPeople := make(map[string]domain.Person)
+		families := make(map[string]domain.Family)
 		ids := []string{args.FromPersonID, args.ToPersonID}
 		for _, step := range path {
 			ids = append(ids, step.FromPersonID, step.ToPersonID)
@@ -163,13 +164,22 @@ func relationshipPathHandler(reader genealogy.Repository, treeID string) server.
 			domainPeople[id] = *person
 			people[id] = enrichedPersonResult(*person, families, related)
 		}
+		for _, step := range path {
+			if _, exists := families[step.FamilyID]; exists {
+				continue
+			}
+			family, err := reader.GetFamily(treeID, step.FamilyID)
+			if err == nil && family != nil {
+				families[step.FamilyID] = *family
+			}
+		}
 		output := relationshipPathResultWithPeople(args.FromPersonID, args.ToPersonID, found, path, people)
 		output.AIContext = aiContextDTO{Hint: "Resolved person details are included for path nodes. More complete or authoritative person data is available from get_person_by_exact_id.", NextAction: "Call get_person_by_exact_id for a path person_id when additional detail or source evidence is needed."}
-		return structuredResult(output, relationshipPathSummaryWithPeople(args.FromPersonID, args.ToPersonID, found, path, domainPeople)+"\nNext action: call get_person_by_exact_id for a path person_id when additional detail or source evidence is needed.")
+		return structuredResult(output, relationshipPathSummaryWithPeople(args.FromPersonID, args.ToPersonID, found, path, domainPeople, families)+"\nNext action: call get_person_by_exact_id for a path person_id when additional detail or source evidence is needed.")
 	}
 }
 
-func relationshipPathSummaryWithPeople(fromID, toID string, found bool, path []domain.RelationshipPathStep, people map[string]domain.Person) string {
+func relationshipPathSummaryWithPeople(fromID, toID string, found bool, path []domain.RelationshipPathStep, people map[string]domain.Person, families map[string]domain.Family) string {
 	lines := []string{relationshipPathSummary(fromID, toID, found, path)}
 	if !found || len(people) == 0 {
 		return strings.Join(lines, "\n")
@@ -177,6 +187,11 @@ func relationshipPathSummaryWithPeople(fromID, toID string, found bool, path []d
 	lines = append(lines, "Path person details:")
 	seen := make(map[string]bool)
 	for _, step := range path {
+		fromRole, toRole, statement := relationshipSemantics(step)
+		lines = append(lines, fmt.Sprintf("Hop: family_id=%s; from_person_id=%s; from_role=%s; to_person_id=%s; to_role=%s; relationship_statement=%s", step.FamilyID, step.FromPersonID, fromRole, step.ToPersonID, toRole, statement))
+		if family, ok := families[step.FamilyID]; ok {
+			lines = append(lines, familyMembershipSummary(family, people))
+		}
 		for _, id := range []string{step.FromPersonID, step.ToPersonID} {
 			if seen[id] {
 				continue
@@ -188,6 +203,41 @@ func relationshipPathSummaryWithPeople(fromID, toID string, found bool, path []d
 		}
 	}
 	return strings.Join(lines, "\n\n")
+}
+
+func relationshipSemantics(step domain.RelationshipPathStep) (fromRole, toRole, statement string) {
+	switch step.Relationship {
+	case "parent":
+		return "child", "parent", fmt.Sprintf("%s is parent of %s", step.ToPersonID, step.FromPersonID)
+	case "child":
+		return "parent", "child", fmt.Sprintf("%s is child of %s", step.ToPersonID, step.FromPersonID)
+	case "sibling":
+		return "child", "child", fmt.Sprintf("%s and %s are siblings", step.FromPersonID, step.ToPersonID)
+	case "spouse":
+		return "parent", "parent", fmt.Sprintf("%s and %s are spouses in this family", step.FromPersonID, step.ToPersonID)
+	default:
+		return "unknown", "unknown", "relationship direction is not recorded"
+	}
+}
+
+func familyMembershipSummary(family domain.Family, people map[string]domain.Person) string {
+	format := func(relatives []domain.Relative) string {
+		entries := make([]string, 0, len(relatives))
+		for _, relative := range relatives {
+			label := relative.PersonID
+			if person, ok := people[relative.PersonID]; ok {
+				if name := displayName(person); name != "" {
+					label += " (" + name + ")"
+				}
+			}
+			entries = append(entries, label)
+		}
+		if len(entries) == 0 {
+			return "none"
+		}
+		return strings.Join(entries, ", ")
+	}
+	return fmt.Sprintf("Family membership: family_id=%s; parents=%s; children=%s", family.ID, format(family.Parents), format(family.Children))
 }
 
 func relationshipPathSummary(fromID, toID string, found bool, path []domain.RelationshipPathStep) string {
