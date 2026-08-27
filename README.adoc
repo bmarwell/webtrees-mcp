@@ -199,6 +199,10 @@ and an object-shaped `structuredContent` value matching the tool's advertised
 output schema. Collection results are wrapped in `people` or `trees`. Error
 results use diagnostic `content` and should not be treated as successful
 structured data. Missing or uncertain facts must be reported as such.
+Successful results also include `_ai_context` with stable IDs where useful, a
+short deterministic `hint`, and an explicit `next_action`. The same next action
+is stated in the human-readable content so smaller models can choose the next
+bounded tool call without inferring intent from structured fields.
 
 === Published output schemas
 

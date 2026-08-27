@@ -113,7 +113,9 @@ func searchEventsHandler(reader genealogy.Repository, treeID string) server.Tool
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(eventSearchResults(events), eventSearchSummary(events))
+		output := eventSearchResults(events)
+		output.AIContext = aiContextDTO{Hint: "Search results are research leads; verify each returned person with get_person_by_exact_id.", NextAction: "Call get_person_by_exact_id for a returned person_id."}
+		return structuredResult(output, eventSearchSummary(events)+"\n\nNext action: call get_person_by_exact_id for a returned person_id to verify the event.")
 	}
 }
 
@@ -133,7 +135,9 @@ func relationshipPathHandler(reader genealogy.Repository, treeID string) server.
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(relationshipPathResult(args.FromPersonID, args.ToPersonID, found, path), relationshipPathSummary(args.FromPersonID, args.ToPersonID, found, path))
+		output := relationshipPathResult(args.FromPersonID, args.ToPersonID, found, path)
+		output.AIContext = aiContextDTO{Hint: "Only explicit family links were used; a missing path is not proof that no relationship exists.", NextAction: "Verify endpoint people and family records with exact-ID lookups."}
+		return structuredResult(output, relationshipPathSummary(args.FromPersonID, args.ToPersonID, found, path)+"\nNext action: verify endpoint people and family records with exact-ID lookups.")
 	}
 }
 
@@ -175,7 +179,13 @@ func lineageHandler(reader genealogy.Repository, treeID, direction string) serve
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(lineageResult(result), lineageSummary(result))
+		output := lineageResult(result)
+		if result.Truncated {
+			output.AIContext = aiContextDTO{Hint: "The lineage is bounded and truncated at the configured limit.", NextAction: "Repeat with a larger limit or max_depth if more generations are needed."}
+		} else {
+			output.AIContext = aiContextDTO{Hint: "The result contains only explicit family-link traversal.", NextAction: "Call get_person_by_exact_id for a returned person_id when detailed evidence is needed."}
+		}
+		return structuredResult(output, lineageSummary(result)+"\nNext action: "+output.AIContext.NextAction)
 	}
 }
 
@@ -264,7 +274,12 @@ func searchPersonByNameHandler(reader genealogy.Repository, treeID string) serve
 			families, people := resolveFamilyLinks(reader, treeID, result.Person)
 			output.People[i] = enrichedPersonResult(result.Person, families, people)
 		}
-		return structuredResult(output, enrichedSearchPeopleSummary(searchResults.People, reader, treeID, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname)))
+		if output.HasMore {
+			output.AIContext = aiContextDTO{Hint: "The result is paginated; use the same search with the next offset.", NextAction: fmt.Sprintf("Call search_person_by_name again with offset=%d.", offset+limit)}
+		} else {
+			output.AIContext = aiContextDTO{Hint: "Search results are research leads, not verified identities.", NextAction: "Call get_person_by_exact_id for a selected person_id."}
+		}
+		return structuredResult(output, enrichedSearchPeopleSummary(searchResults.People, reader, treeID, fmt.Sprintf("Found %d people matching search %q.", searchResults.TotalCount, args.Surname))+"\n\nNext action: "+output.AIContext.NextAction)
 	}
 }
 
@@ -290,7 +305,9 @@ func getFamilyHandler(reader genealogy.Repository, treeID string) server.ToolHan
 				children[child.PersonID] = *person
 			}
 		}
-		return structuredResult(familyOutput(*family, children), familySummary(*family, children))
+		output := familyOutput(*family, children)
+		output.AIContext = aiContextDTO{Hint: "Family links are explicit records; resolved names remain evidence from the active tree.", NextAction: "Call get_person_by_exact_id for a parent or child person_id to inspect full details."}
+		return structuredResult(output, familySummary(*family, children)+"\nNext action: call get_person_by_exact_id for a parent or child person_id to inspect full details.")
 	}
 }
 
@@ -310,7 +327,9 @@ func listPeopleHandler(reader genealogy.Repository, treeID string, list func(gen
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		return structuredResult(peopleResult(people), peopleSummary(people, fmt.Sprintf("Found %d people.", len(people))))
+		output := peopleResult(people)
+		output.AIContext = aiContextDTO{Hint: "This ordered list is a research lead and may be incomplete because of pagination.", NextAction: "Call get_person_by_exact_id for a selected person_id."}
+		return structuredResult(output, peopleSummary(people, fmt.Sprintf("Found %d people.", len(people)))+"\n\nNext action: call get_person_by_exact_id for a selected person_id.")
 	}
 }
 
@@ -334,7 +353,9 @@ func getPersonByExactIDHandler(reader genealogy.Repository, treeID string) serve
 			return framework.NewToolResultError(err.Error()), nil
 		}
 		families, people := resolveFamilyLinks(reader, treeID, *person)
-		return structuredResult(enrichedPersonResult(*person, families, people), enrichedPersonSummary(*person, families, people))
+		output := enrichedPersonResult(*person, families, people)
+		output.AIContext = personAIContext(*person, families)
+		return structuredResult(output, enrichedPersonSummary(*person, families, people)+"\nNext action: "+output.AIContext.NextAction)
 	}
 }
 
@@ -368,6 +389,37 @@ func resolveFamilyLinks(reader genealogy.Repository, treeID string, person domai
 		}
 	}
 	return families, people
+}
+
+func personAIContext(person domain.Person, families map[string]domain.Family) aiContextDTO {
+	parents := make([]string, 0)
+	spouses := make([]string, 0)
+	for _, link := range person.FamilyLinks {
+		family, ok := families[link.FamilyID]
+		if !ok {
+			continue
+		}
+		if link.Role == "child" {
+			for _, parent := range family.Parents {
+				if parent.PersonID != person.ID {
+					parents = append(parents, parent.PersonID)
+				}
+			}
+		} else if link.Role == "spouse" {
+			for _, spouse := range family.Parents {
+				if spouse.PersonID != person.ID {
+					spouses = append(spouses, spouse.PersonID)
+				}
+			}
+		}
+	}
+	if len(parents) > 0 {
+		return aiContextDTO{ParentsFound: parents, SpousesFound: spouses, Hint: "Parent IDs can be used to investigate siblings through families where they are listed as parents.", NextAction: "Call get_family_by_exact_id for a family_id or get_person_by_exact_id for a selected person_id."}
+	}
+	if len(spouses) > 0 {
+		return aiContextDTO{SpousesFound: spouses, Hint: "A spouse ID can be used to inspect the linked family and its children.", NextAction: "Call get_family_by_exact_id for a family_id or get_person_by_exact_id for the spouse person_id."}
+	}
+	return aiContextDTO{Hint: "No resolvable parent or spouse family links were found in this result.", NextAction: "Use search_person_by_name if another person must be located."}
 }
 
 func personSummary(person domain.Person) string {

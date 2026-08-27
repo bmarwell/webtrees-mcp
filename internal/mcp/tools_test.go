@@ -48,6 +48,9 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 		if tool.Tool.OutputSchema.Type != "object" {
 			t.Errorf("tool %q output schema type = %q, want object", name, tool.Tool.OutputSchema.Type)
 		}
+		if _, ok := tool.Tool.OutputSchema.Properties["_ai_context"]; !ok {
+			t.Errorf("tool %q output schema lacks _ai_context", name)
+		}
 		if name == "get_ancestors" || name == "get_descendants" {
 			for _, field := range []string{"root_person_id", "direction", "nodes", "truncated"} {
 				if _, ok := tool.Tool.OutputSchema.Properties[field]; !ok {
@@ -237,6 +240,17 @@ func TestEnrichedFamilyLinksIncludeRelationshipDetails(t *testing.T) {
 	}
 	if links[1].Spouse == nil || links[1].Spouse.PersonID != "I3" || links[1].Spouse.Name != "Partner One" || links[1].ChildrenCount == nil || *links[1].ChildrenCount != 2 {
 		t.Fatalf("unexpected spouse details: %+v", links[1])
+	}
+}
+
+func TestPersonAIContextSuggestsFamilyFollowUp(t *testing.T) {
+	context := personAIContext(domain.Person{
+		ID: "I1", FamilyLinks: []domain.FamilyLink{{FamilyID: "F1", Role: "child"}},
+	}, map[string]domain.Family{
+		"F1": {Parents: []domain.Relative{{PersonID: "I2"}, {PersonID: "I3"}}},
+	})
+	if !reflect.DeepEqual(context.ParentsFound, []string{"I2", "I3"}) || context.Hint == "" || context.NextAction == "" {
+		t.Fatalf("unexpected AI context: %+v", context)
 	}
 }
 

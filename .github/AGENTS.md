@@ -46,6 +46,10 @@ tree is configured at startup and must not be repeated in tool inputs.
 When presenting family links, resolve the linked family where possible so child
 links include parent summaries and spouse links include the spouse and child
 count; mirror those facts in the human-readable content.
+Include a concise `_ai_context` object in successful tool envelopes with a
+deterministic `hint` and `next_action`. Add relevant stable IDs such as
+`parents_found` or `spouses_found`; repeat the next action explicitly in text
+content for smaller models.
 Preserve missing, uncertain, and partial facts explicitly. Never turn a
 probable death, inferred relationship, or ranking based on incomplete dates
 into an established fact.

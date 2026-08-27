@@ -22,6 +22,14 @@ type personResultDTO struct {
 	Notes          []string           `json:"notes,omitempty"`
 	Sources        []sourceOutput     `json:"sources,omitempty"`
 	Match          *searchMatchOutput `json:"match,omitempty"`
+	AIContext      aiContextDTO       `json:"_ai_context"`
+}
+
+type aiContextDTO struct {
+	ParentsFound []string `json:"parents_found,omitempty"`
+	SpousesFound []string `json:"spouses_found,omitempty"`
+	Hint         string   `json:"hint"`
+	NextAction   string   `json:"next_action"`
 }
 
 type nameOutput struct {
@@ -82,16 +90,20 @@ type searchMatchOutput struct {
 }
 
 type familyOutputDTO struct {
-	ID       string              `json:"family_id"`
-	Parents  []relativeOutput    `json:"parents,omitempty"`
-	Children []familyChildOutput `json:"children,omitempty"`
-	Events   []eventOutput       `json:"events,omitempty"`
-	Notes    []string            `json:"notes,omitempty"`
-	Sources  []sourceOutput      `json:"sources,omitempty"`
+	ID        string              `json:"family_id"`
+	Parents   []relativeOutput    `json:"parents,omitempty"`
+	Children  []familyChildOutput `json:"children,omitempty"`
+	Events    []eventOutput       `json:"events,omitempty"`
+	Notes     []string            `json:"notes,omitempty"`
+	Sources   []sourceOutput      `json:"sources,omitempty"`
+	AIContext aiContextDTO        `json:"_ai_context"`
 }
 
+// AIContext is added by handlers to guide the next bounded tool call.
+
 type peopleResultDTO struct {
-	People []personResultDTO `json:"people"`
+	People    []personResultDTO `json:"people"`
+	AIContext aiContextDTO      `json:"_ai_context"`
 }
 
 type searchPeopleResultDTO struct {
@@ -100,6 +112,7 @@ type searchPeopleResultDTO struct {
 	HasMore    bool              `json:"has_more"`
 	Limit      int               `json:"limit"`
 	Offset     int               `json:"offset"`
+	AIContext  aiContextDTO      `json:"_ai_context"`
 }
 
 func searchPeopleResult(results []domain.PersonSearchResult, totalCount, limit, offset int) searchPeopleResultDTO {
@@ -121,6 +134,7 @@ type relationshipPathResultDTO struct {
 	ToPersonID   string                       `json:"to_person_id"`
 	Found        bool                         `json:"found"`
 	Path         []relationshipPathStepOutput `json:"path"`
+	AIContext    aiContextDTO                 `json:"_ai_context"`
 }
 
 type lineageNodeOutput struct {
@@ -136,6 +150,7 @@ type lineageResultDTO struct {
 	Direction    string              `json:"direction"`
 	Nodes        []lineageNodeOutput `json:"nodes"`
 	Truncated    bool                `json:"truncated"`
+	AIContext    aiContextDTO        `json:"_ai_context"`
 }
 
 type eventSearchResultDTO struct {
@@ -146,7 +161,8 @@ type eventSearchResultDTO struct {
 }
 
 type eventSearchResultsDTO struct {
-	Events []eventSearchResultDTO `json:"events"`
+	Events    []eventSearchResultDTO `json:"events"`
+	AIContext aiContextDTO           `json:"_ai_context"`
 }
 
 func personResult(person domain.Person) personResultDTO {
