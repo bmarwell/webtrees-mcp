@@ -76,6 +76,24 @@ HTTP is disabled by default. Enable the streamable HTTP transport explicitly wit
 go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http
 ----
 
+HTTP mode requires a stable bearer token. Set `WEBTREES_MCP_AUTH_TOKEN` in the
+server environment, or provide a file containing the token with
+`-http-auth-token-file`; the environment variable takes precedence. The token
+is never generated or rotated by the server, so an AI client can be configured
+once with the same value. Send it as `Authorization: Bearer <token>` on every
+`/mcp` request. Startup fails when HTTP is enabled without a non-empty token.
+
+[source,shell]
+----
+WEBTREES_MCP_AUTH_TOKEN='replace-with-a-long-random-token' go run . -dsn 'user:password@tcp(127.0.0.1:3306)/webtrees' -tree-id=1 -http
+----
+
+For a token file, restrict permissions to the service account (for example
+`chmod 600`) and pass its path with `-http-auth-token-file`. Keep the default
+loopback binding for local AI clients. If binding to another interface, also
+use TLS or a trusted reverse proxy and firewall rules. `/healthz` and `/readyz`
+remain low-information status endpoints; the MCP endpoint is bearer-protected.
+
 The HTTP transport is stateless, so clients do not need to preserve an `Mcp-Session-Id` header between requests.
 
 At startup the server verifies database connectivity with a five-second

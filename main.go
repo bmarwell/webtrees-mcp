@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"flag"
@@ -51,6 +52,7 @@ func run() error {
 	httpDebugRedactHeaders := flag.String("http-debug-redact-headers", defaultHTTPDebugRedactHeaders, "comma-separated HTTP headers to redact in debug logs; empty disables header redaction")
 	httpHost := flag.String("http-host", "127.0.0.1", "HTTP bind address when -http is enabled")
 	httpPort := flag.Int("http-port", 8080, "HTTP port when -http is enabled")
+	httpAuthTokenFile := flag.String("http-auth-token-file", "", "file containing the static HTTP bearer token; WEBTREES_MCP_AUTH_TOKEN takes precedence")
 	flag.Parse()
 	if *dsn == "" {
 		return fmt.Errorf("-dsn is required")
@@ -60,6 +62,14 @@ func run() error {
 	}
 	if *httpDebugBodyLimit < 0 {
 		return fmt.Errorf("-http-debug-body-limit must not be negative")
+	}
+	var httpAuthToken string
+	if *httpEnabled {
+		var err error
+		httpAuthToken, err = loadHTTPAuthToken(*httpAuthTokenFile, os.Getenv("WEBTREES_MCP_AUTH_TOKEN"))
+		if err != nil {
+			return err
+		}
 	}
 	redactHeaders := parseRedactedHeaders(*httpDebugRedactHeaders)
 
@@ -90,10 +100,10 @@ func run() error {
 		// between requests. Stateless mode accepts each request independently
 		// and avoids rejecting tools/list or tools/call with a stale/missing ID.
 		if *httpHost != "127.0.0.1" && *httpHost != "localhost" && *httpHost != "::1" {
-			log.Printf("WARNING: HTTP transport is bound to %s; it has no authentication and may expose genealogy data", *httpHost)
+			log.Printf("WARNING: HTTP transport is bound to %s; use transport security and firewall rules", *httpHost)
 		}
 		log.Printf("starting webtrees-mcp HTTP transport on http://%s/mcp", address)
-		return serveHTTP(s, address, *httpDebug, *httpDebugBodyLimit, redactHeaders)
+		return serveHTTP(s, address, httpAuthToken, *httpDebug, *httpDebugBodyLimit, redactHeaders)
 	}
 	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if err := server.ServeStdio(s); err != nil {
@@ -102,12 +112,13 @@ func run() error {
 	return nil
 }
 
-func serveHTTP(mcpServer *server.MCPServer, address string, debug bool, bodyLimit int, redactHeaders map[string]struct{}) error {
+func serveHTTP(mcpServer *server.MCPServer, address, authToken string, debug bool, bodyLimit int, redactHeaders map[string]struct{}) error {
 	var transport *server.StreamableHTTPServer
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		transport.ServeHTTP(w, r)
-	}), debug, bodyLimit, redactHeaders))
+	})
+	mux.Handle("/mcp", accessLog(bearerAuth(mcpHandler, authToken), debug, bodyLimit, redactHeaders))
 	// The database has already passed the startup check before this handler is
 	// installed. The endpoints intentionally expose no connection details.
 	mux.Handle("/healthz", accessLog(statusHandler("ok", http.StatusOK), debug, bodyLimit, redactHeaders))
@@ -142,6 +153,37 @@ func serveHTTP(mcpServer *server.MCPServer, address string, debug bool, bodyLimi
 		return fmt.Errorf("HTTP server after shutdown: %w", err)
 	}
 	return nil
+}
+
+func loadHTTPAuthToken(filePath, environmentToken string) (string, error) {
+	if token := strings.TrimSpace(environmentToken); token != "" {
+		return token, nil
+	}
+	if filePath != "" {
+		contents, err := os.ReadFile(filePath)
+		if err != nil {
+			return "", fmt.Errorf("read HTTP auth token file: %w", err)
+		}
+		if token := strings.TrimSpace(string(contents)); token != "" {
+			return token, nil
+		}
+		return "", fmt.Errorf("HTTP auth token file is empty")
+	}
+	return "", fmt.Errorf("HTTP requires WEBTREES_MCP_AUTH_TOKEN or -http-auth-token-file")
+}
+
+func bearerAuth(next http.Handler, token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		const unauthorized = "Unauthorized\n"
+		authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+		parts := strings.Fields(authorization)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || subtle.ConstantTimeCompare([]byte(parts[1]), []byte(token)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="webtrees-mcp"`)
+			http.Error(w, unauthorized, http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func statusHandler(status string, responseStatus int) http.Handler {

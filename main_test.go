@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -26,6 +28,48 @@ func TestHealthHandlerDoesNotExposeConnectionDetails(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), "dsn") {
 		t.Fatal("health response contains connection details")
+	}
+}
+
+func TestBearerAuthRequiresExactToken(t *testing.T) {
+	handler := bearerAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "stable-token")
+	for _, test := range []struct {
+		name   string
+		header string
+		status int
+	}{
+		{"missing", "", http.StatusUnauthorized},
+		{"wrong scheme", "Basic stable-token", http.StatusUnauthorized},
+		{"wrong token", "Bearer other-token", http.StatusUnauthorized},
+		{"valid", "Bearer stable-token", http.StatusNoContent},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+			request.Header.Set("Authorization", test.header)
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != test.status {
+				t.Fatalf("status = %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
+
+func TestLoadHTTPAuthTokenPrefersEnvironmentAndReadsFile(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("file-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := loadHTTPAuthToken(tokenFile, "env-token"); err != nil || got != "env-token" {
+		t.Fatalf("environment token = %q, error = %v", got, err)
+	}
+	if got, err := loadHTTPAuthToken(tokenFile, ""); err != nil || got != "file-token" {
+		t.Fatalf("file token = %q, error = %v", got, err)
+	}
+	if _, err := loadHTTPAuthToken("", ""); err == nil {
+		t.Fatal("expected missing token configuration error")
 	}
 }
 
