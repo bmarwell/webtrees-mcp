@@ -298,8 +298,9 @@ func getFamilyHandler(reader genealogy.Repository, treeID string) server.ToolHan
 		if err != nil {
 			return framework.NewToolResultError(err.Error()), nil
 		}
-		children := make(map[string]domain.Person, len(family.Children))
-		for _, child := range family.Children {
+		children := make(map[string]domain.Person, len(family.Children)+len(family.Parents))
+		participants := append(append([]domain.Relative{}, family.Children...), family.Parents...)
+		for _, child := range participants {
 			person, err := reader.GetPerson(treeID, child.PersonID)
 			if err == nil && person != nil {
 				children[child.PersonID] = *person
@@ -465,6 +466,7 @@ func enrichedPersonSummary(person domain.Person, families map[string]domain.Fami
 		for _, link := range person.FamilyLinks {
 			description := "- family_id=" + link.FamilyID + "; role=" + link.Role
 			if family, ok := families[link.FamilyID]; ok {
+				description += "; family_name=" + valueOrNotRecorded(familyName(family, people))
 				if link.Role == "child" {
 					for _, parent := range family.Parents {
 						description += fmt.Sprintf("; parent=%s (%s; role=%s)", parent.PersonID, valueOrNotRecorded(displayName(people[parent.PersonID])), parentRole(people[parent.PersonID]))
@@ -668,6 +670,9 @@ func searchPeopleSummary(results []domain.PersonSearchResult, prefix string) str
 
 func familySummary(family domain.Family, childPeople ...map[string]domain.Person) string {
 	lines := []string{"Family ID: " + family.ID}
+	if len(childPeople) > 0 {
+		lines = append(lines, "Family name: "+valueOrNotRecorded(familyName(family, childPeople[0])))
+	}
 	if len(family.Parents) > 0 {
 		lines = append(lines, "Parents:")
 		for _, parent := range family.Parents {

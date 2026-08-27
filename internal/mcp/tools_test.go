@@ -89,6 +89,9 @@ func TestRegisteredToolsPublishGuidanceAndOutputSchemas(t *testing.T) {
 			t.Errorf("family child schema lacks %s", field)
 		}
 	}
+	if _, ok := familyTool.Tool.OutputSchema.Properties["name"]; !ok {
+		t.Error("family output schema lacks name")
+	}
 	for _, field := range []string{"people", "total_count", "has_more", "limit", "offset"} {
 		if _, ok := searchTool.Tool.OutputSchema.Properties[field]; !ok {
 			t.Errorf("search_person_by_name output schema lacks %s", field)
@@ -251,6 +254,16 @@ func TestPersonAIContextSuggestsFamilyFollowUp(t *testing.T) {
 	})
 	if !reflect.DeepEqual(context.ParentsFound, []string{"I2", "I3"}) || context.Hint == "" || context.NextAction == "" {
 		t.Fatalf("unexpected AI context: %+v", context)
+	}
+}
+
+func TestFamilyNameUsesResolvedPrimaryNames(t *testing.T) {
+	name := familyName(domain.Family{Parents: []domain.Relative{{PersonID: "I1"}, {PersonID: "I2"}}}, map[string]domain.Person{
+		"I1": {Name: domain.Name{Given: "Primary", Surname: "One"}},
+		"I2": {Name: domain.Name{Given: "Primary", Surname: "Two"}},
+	})
+	if name != "Family of Primary One and Primary Two" {
+		t.Fatalf("family name = %q", name)
 	}
 }
 

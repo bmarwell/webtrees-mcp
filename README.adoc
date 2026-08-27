@@ -153,6 +153,8 @@ chain them into `get_person_by_exact_id` for verification. The deprecated
 GEDCOM matching in this indexed search.
 `get_family_by_exact_id` accepts `family_id`, returning parent links and child
 records with available `person_id`, `name`, `birth_year`, and `sex` values
+and a derived family `name` based on the resolved primary parent names. The
+same `family_name` is included in resolved person family links.
 without embedding duplicate person objects.
 
 `relationship_path` accepts `from_person_id` and `to_person_id`.

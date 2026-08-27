@@ -54,6 +54,7 @@ type familyChildOutput struct {
 type familyLinkOutput struct {
 	FamilyID      string               `json:"family_id"`
 	Role          string               `json:"role"`
+	FamilyName    string               `json:"family_name,omitempty"`
 	Parents       []familyPersonOutput `json:"parents,omitempty"`
 	Spouse        *familyPersonOutput  `json:"spouse,omitempty"`
 	ChildrenCount *int                 `json:"children_count,omitempty"`
@@ -91,6 +92,7 @@ type searchMatchOutput struct {
 
 type familyOutputDTO struct {
 	ID        string              `json:"family_id"`
+	Name      string              `json:"name,omitempty"`
 	Parents   []relativeOutput    `json:"parents,omitempty"`
 	Children  []familyChildOutput `json:"children,omitempty"`
 	Events    []eventOutput       `json:"events,omitempty"`
@@ -251,6 +253,7 @@ func enrichedFamilyLinkOutputs(person domain.Person, families map[string]domain.
 			outputs = append(outputs, output)
 			continue
 		}
+		output.FamilyName = familyName(family, people)
 		if link.Role == "child" {
 			for _, parent := range family.Parents {
 				entry := familyPersonOutput{PersonID: parent.PersonID, Role: parentRole(people[parent.PersonID])}
@@ -325,9 +328,24 @@ func familyOutput(family domain.Family, children map[string]domain.Person) famil
 		childOutputs = append(childOutputs, output)
 	}
 	return familyOutputDTO{
-		ID: family.ID, Parents: relativeOutputs(family.Parents), Children: childOutputs,
+		ID: family.ID, Name: familyName(family, children), Parents: relativeOutputs(family.Parents), Children: childOutputs,
 		Events: eventOutputs(family.Events), Notes: family.Notes, Sources: sourceOutputs(family.Sources),
 	}
+}
+
+func familyName(family domain.Family, people map[string]domain.Person) string {
+	names := make([]string, 0, len(family.Parents))
+	for _, parent := range family.Parents {
+		if person, ok := people[parent.PersonID]; ok {
+			if name := displayName(person); name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return "Family of " + strings.Join(names, " and ")
 }
 
 func relationshipPathResult(fromID, toID string, found bool, path []domain.RelationshipPathStep) relationshipPathResultDTO {
