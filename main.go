@@ -52,6 +52,7 @@ func run() error {
 	httpDebugRedactHeaders := flag.String("http-debug-redact-headers", defaultHTTPDebugRedactHeaders, "comma-separated HTTP headers to redact in debug logs; empty disables header redaction")
 	httpHost := flag.String("http-host", "127.0.0.1", "HTTP bind address when -http is enabled")
 	httpPort := flag.Int("http-port", 8080, "HTTP port when -http is enabled")
+	httpAuthEnabled := flag.Bool("http-auth", true, "require bearer authentication for the MCP HTTP endpoint")
 	httpAuthTokenFile := flag.String("http-auth-token-file", "", "file containing the static HTTP bearer token; WEBTREES_MCP_AUTH_TOKEN takes precedence")
 	flag.Parse()
 	if *dsn == "" {
@@ -64,7 +65,7 @@ func run() error {
 		return fmt.Errorf("-http-debug-body-limit must not be negative")
 	}
 	var httpAuthToken string
-	if *httpEnabled {
+	if *httpEnabled && *httpAuthEnabled {
 		var err error
 		httpAuthToken, err = loadHTTPAuthToken(*httpAuthTokenFile, os.Getenv("WEBTREES_MCP_AUTH_TOKEN"))
 		if err != nil {
@@ -103,7 +104,7 @@ func run() error {
 			log.Printf("WARNING: HTTP transport is bound to %s; use transport security and firewall rules", *httpHost)
 		}
 		log.Printf("starting webtrees-mcp HTTP transport on http://%s/mcp", address)
-		return serveHTTP(s, address, httpAuthToken, *httpDebug, *httpDebugBodyLimit, redactHeaders)
+		return serveHTTP(s, address, httpAuthToken, *httpAuthEnabled, *httpDebug, *httpDebugBodyLimit, redactHeaders)
 	}
 	log.Printf("starting webtrees-mcp on stdio (no network interface or port)")
 	if err := server.ServeStdio(s); err != nil {
@@ -112,13 +113,18 @@ func run() error {
 	return nil
 }
 
-func serveHTTP(mcpServer *server.MCPServer, address, authToken string, debug bool, bodyLimit int, redactHeaders map[string]struct{}) error {
+func serveHTTP(mcpServer *server.MCPServer, address, authToken string, authEnabled, debug bool, bodyLimit int, redactHeaders map[string]struct{}) error {
 	var transport *server.StreamableHTTPServer
 	mux := http.NewServeMux()
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		transport.ServeHTTP(w, r)
 	})
-	mux.Handle("/mcp", accessLog(bearerAuth(mcpHandler, authToken), debug, bodyLimit, redactHeaders))
+	if authEnabled {
+		mux.Handle("/mcp", accessLog(bearerAuth(mcpHandler, authToken), debug, bodyLimit, redactHeaders))
+	} else {
+		log.Printf("WARNING: HTTP bearer authentication is disabled")
+		mux.Handle("/mcp", accessLog(mcpHandler, debug, bodyLimit, redactHeaders))
+	}
 	// The database has already passed the startup check before this handler is
 	// installed. The endpoints intentionally expose no connection details.
 	mux.Handle("/healthz", accessLog(statusHandler("ok", http.StatusOK), debug, bodyLimit, redactHeaders))

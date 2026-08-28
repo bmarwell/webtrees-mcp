@@ -82,6 +82,9 @@ server environment, or provide a file containing the token with
 is never generated or rotated by the server, so an AI client can be configured
 once with the same value. Send it as `Authorization: Bearer <token>` on every
 `/mcp` request. Startup fails when HTTP is enabled without a non-empty token.
+Authentication remains enabled by default. For temporary local troubleshooting,
+it can be explicitly disabled with `-http-auth=false`; the server logs a warning
+when this is active. Do not use that option on an exposed or shared interface.
 
 [source,shell]
 ----
